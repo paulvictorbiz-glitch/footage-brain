@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+backend/.venv/
+venv/
+
+# Builds
+frontend/dist/
+
+# App data (DB, logs, caches)
+backend/portable_data/
+backend/portable_data_test/
+backend/logs/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Env / secrets
+.env
+backend/.env
+backend/.env.*

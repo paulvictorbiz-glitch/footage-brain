@@ -1,0 +1,34 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+sqlalchemy==2.0.30
+alembic==1.13.1
+pydantic==2.7.1
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+aiofiles==23.2.1
+httpx==0.27.0
+
+# Video processing
+ffmpeg-python==0.2.0
+
+# Transcription
+faster-whisper==1.0.2
+
+# Embeddings
+sentence-transformers==3.0.0
+
+# Vector DB
+chromadb==0.5.0
+
+# Hashing / file utilities
+xxhash==3.4.1
+
+# Task management
+apscheduler==3.10.4
+
+# Logging
+structlog==24.1.0
+
+# Testing
+pytest==8.2.0
+pytest-asyncio==0.23.6
