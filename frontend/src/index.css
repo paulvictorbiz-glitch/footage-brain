@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-surface-4;
+  }
+  
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-surface-1 text-zinc-100;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface-1;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-5 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-500;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium 
+           transition-colors duration-100 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-black hover:bg-amber-400;
+  }
+  .btn-ghost {
+    @apply btn text-zinc-300 hover:bg-surface-3 hover:text-zinc-100;
+  }
+  .btn-danger {
+    @apply btn bg-red-900/40 text-red-300 hover:bg-red-900/70;
+  }
+  
+  .card {
+    @apply bg-surface-2 border border-surface-4 rounded-lg;
+  }
+  
+  .input {
+    @apply bg-surface-2 border border-surface-4 rounded px-3 py-1.5 text-sm 
+           text-zinc-100 placeholder-zinc-500 outline-none 
+           focus:border-accent/60 focus:ring-1 focus:ring-accent/20
+           transition-colors duration-100;
+  }
+  
+  .label {
+    @apply text-xs font-medium text-zinc-400 uppercase tracking-wider;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono;
+  }
+  
+  .status-dot {
+    @apply inline-block w-1.5 h-1.5 rounded-full;
+  }
+}
+
+/* Video player overrides */
+.video-container video {
+  outline: none;
+}

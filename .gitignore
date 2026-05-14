@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Data directories (generated, not committed)
+data/
+footage_brain.db
+portable_data/
+portable_data_test/
+
+# Bundled binaries (re-download per machine)
+backend/tools/
+
+# Pip install transcripts
+torch_upgrade.log*
+
+# Accidental directory from earlier typo (leading brace)
+{backend/
+
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
