@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.machine import check_machine_state
 from app.db.session import init_db
 from app.ingest.pipeline import get_pipeline_worker
 from app.thermal.controller import create_thermal_controller
@@ -47,6 +48,12 @@ async def lifespan(app: FastAPI):
 
     # Create DB tables
     init_db()
+
+    # Detect machine/drive changes and warn about offline footage roots
+    try:
+        check_machine_state(settings)
+    except Exception as exc:
+        logger.warning("machine_check_failed", error=str(exc))
 
     # Start background ingest worker
     worker = get_pipeline_worker()

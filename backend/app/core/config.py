@@ -76,6 +76,12 @@ class Settings(BaseSettings):
     # ── Video extensions ──────────────────────────────────────────────────────
     video_extensions: str = ".mp4,.mov,.avi,.mkv,.mxf,.r3d,.braw,.wmv,.flv,.webm,.m4v,.ts,.mts,.m2ts,.3gp,.f4v"
 
+    # ── FFmpeg binaries ───────────────────────────────────────────────────────
+    # Leave blank to auto-detect: checks ./tools/ffmpeg.exe first, then PATH.
+    # Set to an absolute path to pin a specific binary.
+    ffmpeg_bin: str = ""
+    ffprobe_bin: str = ""
+
     # ── Frontend (production build) ───────────────────────────────────────────
     frontend_dist: str = "../frontend/dist"
 
@@ -120,6 +126,26 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
+
+    @property
+    def ffmpeg_exe(self) -> str:
+        """Resolved path to ffmpeg binary. Checks ./tools/ before PATH."""
+        if self.ffmpeg_bin:
+            return self.ffmpeg_bin
+        local = Path("tools/ffmpeg.exe")
+        if local.exists():
+            return str(local.resolve())
+        return "ffmpeg"
+
+    @property
+    def ffprobe_exe(self) -> str:
+        """Resolved path to ffprobe binary. Checks ./tools/ before PATH."""
+        if self.ffprobe_bin:
+            return self.ffprobe_bin
+        local = Path("tools/ffprobe.exe")
+        if local.exists():
+            return str(local.resolve())
+        return "ffprobe"
 
     @property
     def video_ext_set(self) -> set[str]:

@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 def _run_ffprobe(abs_path: str) -> Optional[Dict[str, Any]]:
     """Run ffprobe and return parsed JSON, or None on error."""
     cmd = [
-        "ffprobe",
+        get_settings().ffprobe_exe,
         "-v", "quiet",
         "-print_format", "json",
         "-show_format",
@@ -81,7 +81,7 @@ def extract_thumbnail(abs_path: str, file_id: str, duration: Optional[float]) ->
         seek_time = min(duration * 0.1, 30.0)  # 10% in, max 30s
 
     cmd = [
-        "ffmpeg",
+        get_settings().ffmpeg_exe,
         "-ss", str(seek_time),
         "-i", abs_path,
         "-vframes", "1",

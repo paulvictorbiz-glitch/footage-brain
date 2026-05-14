@@ -36,45 +36,43 @@ if errorlevel 1 (
     set /a PASS+=1
 )
 
-REM ── Node.js ──────────────────────────────────────────────────────────────────
+REM ── Node.js (only needed if frontend\dist\ is not pre-built) ─────────────────
 
-node --version >nul 2>&1
-if errorlevel 1 (
-    echo  [FAIL] Node.js ............ NOT FOUND
-    echo         Install Node 18+ from https://nodejs.org
-    echo.
-    set /a FAIL+=1
-) else (
-    for /f "tokens=*" %%v in ('node --version 2^>^&1') do (
-        echo  [OK]   Node.js ............ %%v
-    )
+if exist frontend\dist\index.html (
+    echo  [OK]   Node.js ............ not needed ^(frontend already built^)
     set /a PASS+=1
-)
-
-REM ── npm ──────────────────────────────────────────────────────────────────────
-
-npm --version >nul 2>&1
-if errorlevel 1 (
-    echo  [WARN] npm ................ NOT FOUND (usually installed with Node^)
-    set /a WARN+=1
 ) else (
-    for /f "tokens=*" %%v in ('npm --version 2^>^&1') do (
-        echo  [OK]   npm ................ %%v
+    node --version >nul 2>&1
+    if errorlevel 1 (
+        echo  [FAIL] Node.js ............ NOT FOUND
+        echo         Needed to build the frontend UI (one-time^).
+        echo         Install Node 18+ from https://nodejs.org
+        echo         Or copy frontend\dist\ from a machine where it was built.
+        set /a FAIL+=1
+    ) else (
+        for /f "tokens=*" %%v in ('node --version 2^>^&1') do (
+            echo  [OK]   Node.js ............ %%v ^(will build frontend^)
+        )
+        set /a PASS+=1
     )
-    set /a PASS+=1
 )
 
 REM ── ffmpeg ────────────────────────────────────────────────────────────────────
 
-ffmpeg -version >nul 2>&1
-if errorlevel 1 (
-    echo  [WARN] ffmpeg ............. NOT FOUND
-    echo         Metadata and thumbnail extraction will not work without it.
-    echo         Download: https://ffmpeg.org/download.html  ^(add bin\ to PATH^)
-    set /a WARN+=1
-) else (
-    echo  [OK]   ffmpeg ............. found
+if exist backend\tools\ffmpeg.exe (
+    echo  [OK]   ffmpeg ............. backend\tools\ffmpeg.exe ^(bundled^)
     set /a PASS+=1
+) else (
+    ffmpeg -version >nul 2>&1
+    if errorlevel 1 (
+        echo  [WARN] ffmpeg ............. NOT FOUND
+        echo         launch-portable.bat will install it automatically via winget.
+        echo         Or place ffmpeg.exe + ffprobe.exe in backend\tools\
+        set /a WARN+=1
+    ) else (
+        echo  [OK]   ffmpeg ............. found in PATH
+        set /a PASS+=1
+    )
 )
 
 REM ── NVIDIA GPU ───────────────────────────────────────────────────────────────

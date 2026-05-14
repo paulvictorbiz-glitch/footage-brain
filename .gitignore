@@ -1,22 +1,43 @@
-# Dependencies
-node_modules/
-backend/.venv/
-venv/
-
-# Builds
-frontend/dist/
-
-# App data (DB, logs, caches)
-backend/portable_data/
-backend/portable_data_test/
-backend/logs/
-*.log
-
-# Python cache
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
 
-# Env / secrets
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Data directories (generated, not committed)
+data/
+footage_brain.db
+
+# Environment
 .env
-backend/.env
-backend/.env.*
+.env.local
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/

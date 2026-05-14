@@ -1,0 +1,7 @@
+Place ffmpeg.exe and ffprobe.exe here for local bundled use.
+The app checks this folder before falling back to PATH.
+
+Download Windows builds from https://ffmpeg.org/download.html
+(gyan.dev "essentials" build is recommended — small and includes ffprobe)
+
+After placing the binaries here, no PATH configuration is needed.

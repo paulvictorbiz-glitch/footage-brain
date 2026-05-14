@@ -45,7 +45,7 @@ def extract_keyframes(
     fps_filter = f"fps=1/{interval}"
 
     cmd = [
-        "ffmpeg",
+        get_settings().ffmpeg_exe,
         "-i", abs_path,
         "-vf", f"{fps_filter},scale=640:-1",
         "-q:v", "3",

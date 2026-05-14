@@ -74,7 +74,7 @@ def _extract_frames(abs_path: str, interval: int, tmpdir: str) -> List[Tuple[str
     """Extract frames at fixed interval into tmpdir. Returns [(path, timestamp), ...]."""
     out_pattern = os.path.join(tmpdir, "frame_%06d.jpg")
     cmd = [
-        "ffmpeg",
+        get_settings().ffmpeg_exe,
         "-i", abs_path,
         "-vf", f"fps=1/{interval},scale=512:-1",
         "-q:v", "2",
