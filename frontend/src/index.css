@@ -1,3 +1,6 @@
+/* Ziflow-style cinematic dark theme. Imports via Google Fonts. */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Caveat:wght@500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -6,13 +9,26 @@
   * {
     @apply border-surface-4;
   }
-  
+
   :root {
     color-scheme: dark;
+    --c-cyan:   #6bd6e0;
+    --c-amber:  #f5c266;
+    --c-red:    #ff7373;
+    --c-green:  #7fd49a;
+    --c-violet: #a99bff;
+    --c-blue:   #7aa6ff;
+    --dash:     #2c3a55;
+    --line:     #1f2a3d;
   }
 
   body {
-    @apply bg-surface-1 text-zinc-100;
+    @apply bg-surface-0 text-zinc-200 font-sans;
+    font-size: 13px;
+    line-height: 1.45;
+    letter-spacing: 0.01em;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'ss01', 'cv11';
   }
 
   ::-webkit-scrollbar {
@@ -32,11 +48,12 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium 
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium
            transition-colors duration-100 disabled:opacity-40 disabled:cursor-not-allowed;
   }
+  /* Primary action — cyan accent, dark text. */
   .btn-primary {
-    @apply btn bg-accent text-black hover:bg-amber-400;
+    @apply btn bg-accent text-surface-0 hover:bg-accent/85;
   }
   .btn-ghost {
     @apply btn text-zinc-300 hover:bg-surface-3 hover:text-zinc-100;
@@ -44,32 +61,115 @@
   .btn-danger {
     @apply btn bg-red-900/40 text-red-300 hover:bg-red-900/70;
   }
-  
+
   .card {
     @apply bg-surface-2 border border-surface-4 rounded-lg;
   }
-  
+
   .input {
-    @apply bg-surface-2 border border-surface-4 rounded px-3 py-1.5 text-sm 
-           text-zinc-100 placeholder-zinc-500 outline-none 
+    @apply bg-surface-2 border border-surface-4 rounded px-3 py-1.5 text-sm
+           text-zinc-100 placeholder-zinc-500 outline-none
            focus:border-accent/60 focus:ring-1 focus:ring-accent/20
            transition-colors duration-100;
   }
-  
+
   .label {
     @apply text-xs font-medium text-zinc-400 uppercase tracking-wider;
   }
-  
+
   .badge {
     @apply inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono;
   }
-  
+
   .status-dot {
     @apply inline-block w-1.5 h-1.5 rounded-full;
+  }
+
+  /* ── Ziflow signature flourishes ──────────────────────────── */
+
+  /* Cinematic serif-italic page title. Pair with a small mono crumb. */
+  .title-serif {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: italic;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    color: #eaf2ff;
+    line-height: 1.1;
+  }
+
+  /* Hand-script brand mark in the sidebar. */
+  .brand-script {
+    font-family: 'Caveat', cursive;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #eaf2ff;
+  }
+
+  /* Dashed pill — small, mono caps. Use for filter / mode chips. */
+  .dpill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-mono text-[11px]
+           text-zinc-400 cursor-pointer transition-colors
+           border border-dashed;
+    border-color: var(--dash);
+    background: transparent;
+  }
+  .dpill:hover {
+    @apply text-zinc-200;
+    border-color: rgba(107, 214, 224, 0.55);
+  }
+  .dpill.is-active {
+    @apply text-accent;
+    border-color: var(--c-cyan);
+    border-style: solid;
+    background: rgba(107, 214, 224, 0.08);
+  }
+  .dpill.is-amber {
+    color: var(--c-amber);
+    border-color: rgba(245, 194, 102, 0.55);
+  }
+  .dpill.is-red {
+    color: var(--c-red);
+    border-color: rgba(255, 115, 115, 0.55);
+  }
+  .dpill.is-solid {
+    border-style: solid;
+    border-color: #2a3754;
+    color: #d8e2ee;
   }
 }
 
 /* Video player overrides */
 .video-container video {
   outline: none;
+}
+
+/* Coverage tree — per-stage status cells. Keeping these as raw CSS so
+   coverage page can render hundreds of cells without exploding utility-class
+   purgecss output. */
+.cov-cell {
+  width: 18px;
+  height: 8px;
+  border-radius: 2px;
+  background: #1f2a3d;
+  display: inline-block;
+  margin-right: 2px;
+}
+.cov-cell.cov-full    { background: #7fd49a; }
+.cov-cell.cov-partial { background: #f5c266; }
+.cov-cell.cov-none    { background: #1f2a3d; }
+.cov-cell.cov-skipped {
+  /* Intentionally not run — diagonal stripes so it reads "settled, not pending". */
+  background-color: #2a3754;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0,
+    transparent 2px,
+    rgba(232, 240, 248, 0.18) 2px,
+    rgba(232, 240, 248, 0.18) 3px
+  );
+}
+.cov-cell.cov-disabled {
+  background: transparent;
+  border: 1px dashed #2c3a55;
+  height: 8px;
 }

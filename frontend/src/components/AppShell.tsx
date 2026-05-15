@@ -7,20 +7,9 @@ import {
   Copy,
   FolderOpen,
   Folder,
-  Film,
   Cpu,
   Clapperboard,
-  Lightbulb,
-  Layers,
-  Video,
-  CalendarDays,
-  MapPin,
-  Send,
-  BarChart2,
-  Users,
-  Settings,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Network,
   Menu,
   Bell,
   ChevronDown,
@@ -44,6 +33,8 @@ type NavItem = {
   soon?: boolean
 }
 
+// Only routes that exist are shown. Placeholders were stripped so the sidebar
+// is the truth about what's wired up.
 const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Library',
@@ -51,33 +42,20 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { to: '/',           icon: LayoutDashboard, label: 'Overview',    end: true },
       { to: '/search',     icon: Search,          label: 'Search' },
       { to: '/folders',    icon: Folder,          label: 'Folders' },
+      { to: '/coverage',   icon: Network,         label: 'Coverage' },
       { to: '/duplicates', icon: Copy,            label: 'Duplicates', badgeKey: 'duplicates' },
     ],
   },
   {
     label: 'Production',
     items: [
-      { to: '/ideas',      icon: Lightbulb,    label: 'Idea Inbox',  soon: true },
-      { to: '/blueprints', icon: Layers,       label: 'Blueprints',  soon: true },
-      { to: '/projects',   icon: Video,        label: 'Projects',    soon: true },
       { to: '/timeline',   icon: Clapperboard, label: 'Timeline' },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { to: '/calendar',   icon: CalendarDays, label: 'Calendar',   soon: true },
-      { to: '/locations',  icon: MapPin,       label: 'Locations',  soon: true },
-      { to: '/publishing', icon: Send,         label: 'Publishing', soon: true },
-      { to: '/analytics',  icon: BarChart2,    label: 'Analytics',  soon: true },
     ],
   },
   {
     label: 'Workspace',
     items: [
-      { to: '/team',     icon: Users,     label: 'Team',     soon: true },
-      { to: '/sources',  icon: FolderOpen, label: 'Sources' },
-      { to: '/settings', icon: Settings,  label: 'Settings', soon: true },
+      { to: '/sources',    icon: FolderOpen, label: 'Sources' },
     ],
   },
 ]
@@ -295,17 +273,15 @@ function Sidebar({
       collapsed ? 'w-11' : 'w-52'
     )}>
 
-      {/* Logo */}
+      {/* Logo — hand-script ziflow signature style */}
       <div className={cn(
         'h-11 flex items-center border-b border-surface-4 flex-shrink-0',
-        collapsed ? 'justify-center px-0' : 'gap-2 px-3'
+        collapsed ? 'justify-center px-0' : 'gap-2.5 px-3'
       )}>
-        <div className="w-[22px] h-[22px] rounded-[5px] bg-accent flex items-center justify-center flex-shrink-0">
-          <Film size={12} color="#000" />
-        </div>
+        <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-accent flex-shrink-0" />
         {!collapsed && (
-          <span className="font-display font-bold text-sm text-zinc-100 whitespace-nowrap overflow-hidden">
-            Footage<span className="text-accent">Brain</span>
+          <span className="brand-script text-[20px] leading-none whitespace-nowrap overflow-hidden">
+            footage brain
           </span>
         )}
       </div>
@@ -323,22 +299,6 @@ function Sidebar({
             {section.items.map(item => {
               const Icon  = item.icon
               const badge = badges[item.badgeKey ?? '']
-
-              if (item.soon) {
-                return (
-                  <div
-                    key={item.to}
-                    title={collapsed ? `${item.label} — coming soon` : 'Coming soon'}
-                    className={cn(
-                      'flex items-center gap-2 px-2 py-1.5 rounded text-xs text-zinc-700 cursor-default select-none',
-                      collapsed && 'justify-center'
-                    )}
-                  >
-                    <Icon size={14} className="flex-shrink-0" />
-                    {!collapsed && <span>{item.label}</span>}
-                  </div>
-                )
-              }
 
               return (
                 <NavLink

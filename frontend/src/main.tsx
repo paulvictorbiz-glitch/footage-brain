@@ -13,6 +13,7 @@ import DuplicatesPage from './pages/Duplicates'
 import SourcesPage from './pages/Sources'
 import FoldersPage from './pages/Folders'
 import TimelinePage from './pages/Timeline'
+import CoveragePage from './pages/Coverage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +37,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/duplicates" element={<DuplicatesPage />} />
             <Route path="/sources" element={<SourcesPage />} />
             <Route path="/folders" element={<FoldersPage />} />
+            <Route path="/coverage" element={<CoveragePage />} />
             <Route path="/timeline" element={<TimelinePage />} />
             <Route path="/timeline/:id" element={<TimelinePage />} />
           </Routes>
@@ -44,12 +46,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           position="bottom-right"
           toastOptions={{
             style: {
-              background: '#18181b',
-              color: '#e4e4e7',
-              border: '1px solid #27272b',
+              background: '#111827',
+              color: '#d8e2ee',
+              border: '1px solid #1f2a3d',
               fontSize: '13px',
             },
-            success: { iconTheme: { primary: '#f59e0b', secondary: '#18181b' } },
+            success: { iconTheme: { primary: '#6bd6e0', secondary: '#0d1320' } },
           }}
         />
       </BrowserRouter>

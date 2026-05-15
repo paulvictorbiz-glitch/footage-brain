@@ -85,11 +85,14 @@ def caption_video(session: Session, vf: VideoFile) -> bool:
     with tempfile.TemporaryDirectory(prefix="caption_embed_") as tmpdir:
         frame_infos = _extract_frames(vf.abs_path, interval, tmpdir)
         if not frame_infos:
+            # Tell the job runner this isn't a "done" — it's a skip. The
+            # file genuinely had no extractable frames (very short clip,
+            # codec issue, all-black, etc). Marking it 'done' would hide
+            # that fact and the file would just silently never appear in
+            # Visual/Caption search results.
+            from app.ingest.pipeline import StageSkip
             logger.info("caption_no_frames", file=vf.filename)
-            vf.captioned = True
-            vf.updated_at = datetime.utcnow()
-            session.flush()
-            return True
+            raise StageSkip("no_frames_extracted")
 
         # Caption all frames with the VLM
         try:

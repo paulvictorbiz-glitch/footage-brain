@@ -28,6 +28,7 @@ from app.ingest.clip_embedder import clip_embed_video
 from app.ingest.embedder import embed_video_chunks
 from app.ingest.hasher import hash_and_dedup
 from app.ingest.metadata import extract_metadata
+from app.ingest.stage_settings import TOGGLEABLE_STAGES, is_stage_enabled
 from app.ingest.transcriber import run_transcription
 
 logger = get_logger(__name__)
@@ -41,6 +42,17 @@ def _thumbnail_stage(session: Session, vf: VideoFile) -> bool:
         vf.thumbnail_path = thumb
         session.flush()
     return True
+
+
+class StageSkip(Exception):
+    """
+    Raise from a stage handler to mark the job 'skipped' with a clear reason
+    instead of 'done' or 'failed'. Use when the work was intentionally
+    not performed (e.g. captioner found no frames to caption).
+    """
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 
 STAGE_HANDLERS: Dict[str, Callable[[Session, VideoFile], bool]] = {
@@ -93,6 +105,11 @@ def _process_job(job_id: str) -> None:
                 job.status = "failed"
                 job.error_message = "handler_returned_false"
                 logger.warning("job_failed", stage=job.stage, file=vf.filename)
+        except StageSkip as skip:
+            job.status = "skipped"
+            job.finished_at = datetime.utcnow()
+            job.error_message = skip.reason[:500]
+            logger.info("job_skipped", stage=job.stage, file=vf.filename, reason=skip.reason)
         except Exception as exc:
             job.status = "failed"
             job.error_message = str(exc)[:500]
@@ -101,11 +118,17 @@ def _process_job(job_id: str) -> None:
 
 def _get_pending_job_ids(session: Session, limit: int = 50) -> List[str]:
     stage_order = ["metadata", "hash", "thumbnail", "transcript", "embed", "clip_embed", "caption"]
-    jobs = (
-        session.query(IngestJob.id, IngestJob.stage)
-        .filter(IngestJob.status.in_(["pending"]))
-        .all()
+
+    # Filter out stages the user has disabled (clip_embed / caption).
+    # Already-running jobs aren't affected — they're past this query.
+    disabled = {s for s in TOGGLEABLE_STAGES if not is_stage_enabled(s)}
+
+    q = session.query(IngestJob.id, IngestJob.stage).filter(
+        IngestJob.status == "pending"
     )
+    if disabled:
+        q = q.filter(~IngestJob.stage.in_(disabled))
+    jobs = q.all()
 
     def priority(j):
         try:

@@ -5,31 +5,50 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['"JetBrains Mono"', '"Fira Code"', 'ui-monospace', 'monospace'],
-        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
-        display: ['"Space Grotesk"', '"DM Sans"', 'sans-serif'],
+        mono:    ['"JetBrains Mono"', '"IBM Plex Mono"', 'ui-monospace', 'Menlo', 'monospace'],
+        sans:    ['"Inter"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+        display: ['"Cormorant Garamond"', '"Georgia"', 'serif'],
+        script:  ['"Caveat"', '"Permanent Marker"', 'cursive'],
       },
       colors: {
-        // Dark background palette
+        // Ziflow blue-cinematic dark surfaces.
         surface: {
-          0: '#0a0a0b',   // deepest bg
-          1: '#111113',   // main bg
-          2: '#18181b',   // card bg
-          3: '#1e1e22',   // hover bg
-          4: '#27272b',   // border
-          5: '#3f3f46',   // muted border
+          0: '#0a0f17',   // deepest bg (page background)
+          1: '#0d1320',   // app bg
+          2: '#111827',   // card bg
+          3: '#161f31',   // hover / input bg
+          4: '#1f2a3d',   // border
+          5: '#2a3754',   // border-hard
         },
-        // Accent - amber/gold for a pro filmmaking feel
+        // Cyan accent. Keeps `bg-accent`, `text-accent` working everywhere.
         accent: {
-          DEFAULT: '#f59e0b',
-          muted: '#92400e',
-          dim: '#451a03',
+          DEFAULT: '#6bd6e0',
+          muted:   '#2e6973',
+          dim:     '#15333a',
         },
-        // Semantic
-        ok: '#22c55e',
-        warn: '#f59e0b',
-        err: '#ef4444',
-        info: '#3b82f6',
+        // Override neutral zinc so generic `text-zinc-400` etc. inherit the
+        // blue-tinted fg ladder. Tailwind's named zinc shades are remapped
+        // to ziflow's fg palette where it makes visual sense.
+        zinc: {
+          50:  '#f5f8fc',
+          100: '#eaf0f8',
+          200: '#d8e2ee',  // fg
+          300: '#c1cde0',
+          400: '#8a98ad',  // fg-mute
+          500: '#5e6c82',  // fg-dim
+          600: '#3e4a5e',  // fg-faint
+          700: '#2a3754',
+          800: '#1f2a3d',
+          900: '#161f31',
+          950: '#0a0f17',
+        },
+        // Status — keeps existing usages of bg-amber-*, bg-red-*, bg-green-*
+        // through Tailwind defaults, but exposes named tokens for new code.
+        ok:    '#7fd49a',
+        warn:  '#f5c266',
+        err:   '#ff7373',
+        info:  '#7aa6ff',
+        violet: { DEFAULT: '#a99bff' },
       },
       animation: {
         'fade-in': 'fadeIn 0.15s ease-out',

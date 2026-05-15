@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from 'react-query'
 import {
   Film, HardDrive, Copy, Clock, RefreshCw,
   AlertTriangle, Zap, Tag, CheckCircle2,
+  EyeOff, Eye,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -10,6 +11,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { StatCard } from '@/components/StatCard'
 import { VideoCard } from '@/components/VideoCard'
 import { ThermalCard } from '@/components/ThermalCard'
+import { PhaseAnalyticsCard } from '@/components/PhaseAnalyticsCard'
 import { formatBytes, cn } from '@/lib/utils'
 
 function StorageBar({ bytes, maxBytes, label }: { bytes: number; maxBytes: number; label: string }) {
@@ -105,7 +107,32 @@ function IndexingSpeedCard() {
   const { data, refetch } = useQuery('indexing-speed', () => api.getIndexingSpeed(), { refetchInterval: 10000 })
   const { data: stageStatus, refetch: refetchStatus } = useQuery('stage-status', () => api.getStageStatus(), { refetchInterval: 10000 })
   const { data: jobData } = useQuery('job-queue', () => api.getJobQueue(), { refetchInterval: 5000 })
+  const { data: toggles } = useQuery('pipeline-toggles', () => api.getPipelineToggles(), { refetchInterval: 30000 })
   const qc = useQueryClient()
+
+  const clipEnabled = toggles?.clip_embed_enabled ?? true
+  const captionEnabled = toggles?.caption_enabled ?? true
+  const heavyDisabled = !clipEnabled && !captionEnabled
+
+  const togglesMut = useMutation(
+    (body: { clip_embed?: boolean; caption?: boolean }) => api.setPipelineToggles(body),
+    {
+      onSuccess: (res, body) => {
+        const stages = Object.keys(body).join('+')
+        const parts: string[] = []
+        if (res.paused) parts.push(`${res.paused} job${res.paused === 1 ? '' : 's'} paused`)
+        if (res.requeued) parts.push(`${res.requeued} requeued`)
+        if (res.created) parts.push(`${res.created} created`)
+        toast.success(`${stages}: ${parts.length ? parts.join(', ') : 'updated'}`)
+        qc.invalidateQueries('pipeline-toggles')
+        qc.invalidateQueries('indexing-speed')
+        qc.invalidateQueries('stage-status')
+        qc.invalidateQueries('job-queue')
+        qc.invalidateQueries('phase-analytics')
+      },
+      onError: () => { toast.error('Failed to update pipeline toggles') },
+    }
+  )
 
   const isPaused = (jobData?.queue_stats?.paused ?? 0) > 0
 
@@ -241,8 +268,12 @@ function IndexingSpeedCard() {
       </div>
       <div className="space-y-2">
         {data.stages?.map((s: any) => {
-          const total = s.done + s.pending + (s.paused ?? 0)
-          const pct = total > 0 ? (s.done / total) * 100 : 100
+          // Skipped jobs are "settled" too — count them so a stage with
+          // (e.g.) 26 done + 35 skipped shows 100% instead of 43%.
+          const skippedN = s.skipped ?? 0
+          const total = s.done + s.pending + (s.paused ?? 0) + skippedN
+          const settled = s.done + skippedN
+          const pct = total > 0 ? (settled / total) * 100 : 100
           const isActive = s.pending > 0 || s.processing > 0
           const isSkipped = stageStatus?.[s.stage]?.is_skipped
           return (
@@ -267,8 +298,16 @@ function IndexingSpeedCard() {
                       ETA {formatEtaSeconds(s.eta_seconds)}
                     </span>
                   )}
+                  {skippedN > 0 && (
+                    <span
+                      className="text-[10.5px] text-warn font-mono"
+                      title={`${skippedN} job${skippedN === 1 ? '' : 's'} skipped (e.g. captioner found no frames)`}
+                    >
+                      {skippedN} skip
+                    </span>
+                  )}
                   <span className="text-xs text-zinc-600 font-mono">
-                    {s.done.toLocaleString()}/{(s.done + s.pending + (s.paused ?? 0)).toLocaleString()}
+                    {s.done.toLocaleString()}/{total.toLocaleString()}
                   </span>
                   {isSkipped ? (
                     <button
@@ -314,6 +353,80 @@ function IndexingSpeedCard() {
           <span className="font-mono">{data.total_pending?.toLocaleString()} jobs pending</span>
         </div>
       )}
+
+      {/* Persistent CLIP / VLM toggles — survive restart. Disabling marks
+          pending jobs as paused; in-flight jobs finish on their own.
+          Enabling re-queues paused jobs and creates fresh ones for any
+          transcribed file that has no job for this stage yet. */}
+      <div className="pt-2 border-t border-surface-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-zinc-400">
+            Heavy stages (CLIP + VLM)
+          </p>
+          <span className="text-[10px] text-zinc-600 font-mono">
+            persistent · skips after Whisper
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className={cn(
+              'text-xs px-2.5 py-1 rounded transition-colors flex items-center gap-1.5',
+              clipEnabled
+                ? 'bg-surface-3 text-zinc-300 hover:bg-amber-900/30 hover:text-amber-400'
+                : 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60'
+            )}
+            disabled={togglesMut.isLoading}
+            onClick={() => togglesMut.mutate({ clip_embed: !clipEnabled })}
+            title={clipEnabled
+              ? 'Pause CLIP frame embedding — disables Visual search until resumed'
+              : 'Resume CLIP frame embedding — re-queues paused jobs and creates new ones'}
+          >
+            {clipEnabled ? <EyeOff size={11} /> : <Eye size={11} />}
+            CLIP {clipEnabled ? 'on' : 'paused'}
+          </button>
+          <button
+            className={cn(
+              'text-xs px-2.5 py-1 rounded transition-colors flex items-center gap-1.5',
+              captionEnabled
+                ? 'bg-surface-3 text-zinc-300 hover:bg-amber-900/30 hover:text-amber-400'
+                : 'bg-amber-900/40 text-amber-300 hover:bg-amber-900/60'
+            )}
+            disabled={togglesMut.isLoading}
+            onClick={() => togglesMut.mutate({ caption: !captionEnabled })}
+            title={captionEnabled
+              ? 'Pause VLM caption generation — disables Caption search until resumed'
+              : 'Resume VLM caption generation — re-queues paused jobs and creates new ones'}
+          >
+            {captionEnabled ? <EyeOff size={11} /> : <Eye size={11} />}
+            VLM {captionEnabled ? 'on' : 'paused'}
+          </button>
+          {(!clipEnabled || !captionEnabled) && (
+            <button
+              className="text-xs px-2.5 py-1 rounded bg-green-900/30 text-green-400 hover:bg-green-900/50 transition-colors font-medium"
+              disabled={togglesMut.isLoading}
+              onClick={() => togglesMut.mutate({ clip_embed: true, caption: true })}
+              title="Resume both CLIP and VLM — re-queues paused jobs and creates new ones for transcribed files"
+            >
+              ▶ Resume CLIP + VLM
+            </button>
+          )}
+          {clipEnabled && captionEnabled && (
+            <button
+              className="text-xs px-2.5 py-1 rounded bg-surface-3 text-zinc-400 hover:bg-amber-900/30 hover:text-amber-400 transition-colors ml-auto"
+              disabled={togglesMut.isLoading}
+              onClick={() => togglesMut.mutate({ clip_embed: false, caption: false })}
+              title="Pause both CLIP and VLM — pipeline stops after Whisper transcription"
+            >
+              ⏸ Pause CLIP + VLM
+            </button>
+          )}
+        </div>
+        {heavyDisabled && (
+          <p className="text-[10px] text-amber-400/80">
+            Pipeline will stop after transcription. Visual + Caption + Multimodal search unavailable for new files.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -386,31 +499,7 @@ export default function DashboardPage() {
             accent={!!stats && stats.duplicate_groups > 0} />
         </div>
 
-        {stats && (
-          <div className="card p-4">
-            <p className="label mb-3">Indexing Pipeline</p>
-            <div className="space-y-2.5">
-              {[
-                { label: 'Metadata extracted', count: stats.total_indexed },
-                { label: 'Transcribed', count: stats.total_transcribed },
-                { label: 'Embedded (searchable)', count: stats.total_embedded },
-              ].map(({ label, count }) => {
-                const pct = stats.total_files > 0 ? (count / stats.total_files) * 100 : 0
-                return (
-                  <div key={label} className="flex items-center gap-3">
-                    <span className="text-xs text-zinc-400 w-44 flex-shrink-0">{label}</span>
-                    <div className="flex-1 h-1.5 bg-surface-3 rounded-full overflow-hidden">
-                      <div className="h-full bg-accent/60 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-xs text-zinc-500 font-mono w-24 text-right">
-                      {count.toLocaleString()} / {stats.total_files.toLocaleString()}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        <PhaseAnalyticsCard />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <DriveHealthCard />

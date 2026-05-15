@@ -17,6 +17,12 @@ from app.core.config import get_settings
 from app.db.models import DuplicateGroup, IngestJob, ScanRoot, VideoFile
 from app.db.session import get_db_session
 from app.ingest.pipeline import get_pipeline_worker
+from app.ingest.stage_settings import (
+    TOGGLEABLE_STAGES,
+    get_stage_toggles,
+    set_stage_toggles,
+)
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -294,3 +300,343 @@ def get_app_settings():
         thumbnails_dir=s.thumbnails_dir,
         chroma_dir=s.chroma_dir,
     )
+
+
+# ─── Pipeline stage toggles (CLIP / VLM persistent enable) ────────────────────
+
+
+class PipelineTogglesUpdate(BaseModel):
+    clip_embed: bool | None = None
+    caption: bool | None = None
+
+
+@router.get("/pipeline-toggles")
+def get_pipeline_toggles():
+    return get_stage_toggles()
+
+
+@router.post("/pipeline-toggles")
+def update_pipeline_toggles(
+    body: PipelineTogglesUpdate, session: Session = Depends(get_db_session)
+):
+    """
+    Enable / disable the toggleable stages (clip_embed, caption).
+
+    Disabling a stage:
+      - Sets enabled=False (persisted to pipeline_settings.json).
+      - Marks all currently-pending jobs for that stage as 'paused' so the
+        worker stops picking them up. In-flight 'processing' jobs are NOT
+        interrupted — they finish naturally.
+
+    Enabling a stage:
+      - Sets enabled=True.
+      - Re-queues any 'paused' jobs for that stage back to 'pending'.
+      - Creates fresh jobs for any video file where 'transcript' is done but
+        no job exists yet for the now-enabled stage (covers files scanned
+        while the stage was disabled).
+      - Restarts the pipeline worker so it picks them up.
+    """
+    updates: dict[str, bool] = {}
+    if body.clip_embed is not None:
+        updates["clip_embed_enabled"] = body.clip_embed
+    if body.caption is not None:
+        updates["caption_enabled"] = body.caption
+    if not updates:
+        return {"toggles": get_stage_toggles(), "paused": 0, "requeued": 0, "created": 0}
+
+    new_state = set_stage_toggles(updates)
+
+    paused_count = 0
+    requeued_count = 0
+    created_count = 0
+
+    for stage in TOGGLEABLE_STAGES:
+        enabled = new_state.get(f"{stage}_enabled", True)
+
+        if not enabled:
+            # Pause pending jobs for this stage.
+            pending = (
+                session.query(IngestJob)
+                .filter(IngestJob.stage == stage, IngestJob.status == "pending")
+                .all()
+            )
+            for j in pending:
+                j.status = "paused"
+                j.error_message = f"{stage}_paused_by_user_toggle"
+            paused_count += len(pending)
+        else:
+            # Re-queue jobs paused specifically by this toggle.
+            paused = (
+                session.query(IngestJob)
+                .filter(
+                    IngestJob.stage == stage,
+                    IngestJob.status == "paused",
+                    IngestJob.error_message == f"{stage}_paused_by_user_toggle",
+                )
+                .all()
+            )
+            for j in paused:
+                j.status = "pending"
+                j.error_message = None
+                j.attempts = 0
+            requeued_count += len(paused)
+
+            # Create jobs for transcribed files that never got one (because
+            # the stage was disabled during their scan).
+            files_without_job = (
+                session.query(VideoFile)
+                .filter(VideoFile.transcribed.is_(True))
+                .filter(
+                    ~VideoFile.id.in_(
+                        session.query(IngestJob.video_file_id).filter(
+                            IngestJob.stage == stage
+                        )
+                    )
+                )
+                .all()
+            )
+            for vf in files_without_job:
+                session.add(
+                    IngestJob(video_file_id=vf.id, stage=stage, status="pending")
+                )
+                created_count += 1
+
+    session.flush()
+
+    # If anything was newly queued, make sure the worker is running.
+    if requeued_count or created_count:
+        get_pipeline_worker().start()
+
+    return {
+        "toggles": new_state,
+        "paused": paused_count,
+        "requeued": requeued_count,
+        "created": created_count,
+    }
+
+
+# ─── Coverage tree (per-folder per-stage completion) ─────────────────────────
+
+_COVERAGE_STAGES = ("metadata", "hash", "thumbnail", "transcript", "embed", "clip_embed", "caption")
+
+
+@router.get("/coverage-tree")
+def get_coverage_tree(session: Session = Depends(get_db_session)):
+    """
+    Per-scan-root folder tree where each folder has a per-stage completion
+    breakdown. Used by the Coverage page to colour every folder by which
+    phases are complete.
+
+    For each (folder, stage):
+      done    = jobs in 'done' for that stage on files under that folder
+      total   = total file count for that folder
+
+    Disabled stages are flagged via current pipeline_settings, so the UI can
+    render their cells differently (dashed, "skipped" tag) instead of red.
+    """
+    toggles = get_stage_toggles()
+    disabled_stages = [
+        s for s in TOGGLEABLE_STAGES if not toggles.get(f"{s}_enabled", True)
+    ]
+
+    roots_q = session.query(ScanRoot).filter_by(enabled=True).all()
+    result_roots: List[Dict[str, Any]] = []
+
+    for root in roots_q:
+        files = (
+            session.query(VideoFile)
+            .filter_by(scan_root_id=root.id)
+            .all()
+        )
+        # Group files by folder relative to root.path
+        folder_files: Dict[str, List[VideoFile]] = {}
+        for f in files:
+            try:
+                rel = f.abs_path.replace(root.path, "").strip(os.sep)
+            except Exception:
+                rel = f.filename
+            parts = rel.split(os.sep)
+            folder = os.sep.join(parts[:-1]) if len(parts) > 1 else ""
+            folder_files.setdefault(folder, []).append(f)
+
+        # Get done + skipped job stage flags for the files we care about, in
+        # bulk. Skipped is its own bucket so the UI can render those cells
+        # distinctly ("intentionally not run" vs "still pending").
+        if files:
+            file_ids = [f.id for f in files]
+            status_rows = (
+                session.query(IngestJob.video_file_id, IngestJob.stage, IngestJob.status)
+                .filter(
+                    IngestJob.video_file_id.in_(file_ids),
+                    IngestJob.status.in_(("done", "skipped")),
+                    IngestJob.stage.in_(_COVERAGE_STAGES),
+                )
+                .all()
+            )
+        else:
+            status_rows = []
+
+        done_by_file: Dict[str, set] = {}
+        skipped_by_file: Dict[str, set] = {}
+        for fid, stage, status in status_rows:
+            if status == "done":
+                done_by_file.setdefault(fid, set()).add(stage)
+            elif status == "skipped":
+                skipped_by_file.setdefault(fid, set()).add(stage)
+
+        folder_out = []
+        for folder_path, group in sorted(folder_files.items()):
+            stage_counts = {s: 0 for s in _COVERAGE_STAGES}
+            skipped_counts = {s: 0 for s in _COVERAGE_STAGES}
+            for vf in group:
+                for s in done_by_file.get(vf.id, set()):
+                    if s in stage_counts:
+                        stage_counts[s] += 1
+                for s in skipped_by_file.get(vf.id, set()):
+                    if s in skipped_counts:
+                        skipped_counts[s] += 1
+            folder_out.append(
+                {
+                    "rel_path": folder_path,
+                    "file_count": len(group),
+                    "stage_counts": stage_counts,
+                    "skipped_counts": skipped_counts,
+                }
+            )
+
+        # Roll up root-level totals too.
+        root_stage_counts = {s: 0 for s in _COVERAGE_STAGES}
+        root_skipped_counts = {s: 0 for s in _COVERAGE_STAGES}
+        for fo in folder_out:
+            for s in _COVERAGE_STAGES:
+                root_stage_counts[s] += fo["stage_counts"][s]
+                root_skipped_counts[s] += fo["skipped_counts"][s]
+
+        result_roots.append(
+            {
+                "root_id": root.id,
+                "label": root.label or root.path,
+                "path": root.path,
+                "is_online": getattr(root, "is_online", True),
+                "file_count": len(files),
+                "stage_counts": root_stage_counts,
+                "skipped_counts": root_skipped_counts,
+                "folders": folder_out,
+            }
+        )
+
+    return {
+        "stages": list(_COVERAGE_STAGES),
+        "disabled_stages": disabled_stages,
+        "roots": result_roots,
+    }
+
+
+# ─── Per-phase analytics (timing breakdown) ───────────────────────────────────
+
+
+_PHASE_STAGES = ("metadata", "hash", "thumbnail", "transcript", "embed", "clip_embed", "caption")
+_ACTIVE_CAP_SECONDS = 600.0  # cap per-job durations to ignore pause/resume gaps
+
+
+@router.get("/phase-analytics")
+def get_phase_analytics(
+    scope: str = "latest", session: Session = Depends(get_db_session)
+):
+    """
+    Per-stage timing summary.
+
+    scope="latest": only the most recent contiguous run window (defined as
+    jobs whose finished_at is within 24h of the most recent finish).
+    scope="all_time": every 'done' job ever recorded.
+    """
+    base = session.query(IngestJob).filter(
+        IngestJob.status == "done",
+        IngestJob.started_at.isnot(None),
+        IngestJob.finished_at.isnot(None),
+    )
+    skipped_base = session.query(IngestJob).filter(IngestJob.status == "skipped")
+
+    window_start = None
+    window_end = None
+    if scope == "latest":
+        last_finish = (
+            session.query(func.max(IngestJob.finished_at))
+            .filter(IngestJob.status == "done")
+            .scalar()
+        )
+        if last_finish:
+            window_end = last_finish
+            window_start = last_finish - timedelta(hours=24)
+            base = base.filter(IngestJob.finished_at >= window_start)
+            # For skipped, use whichever timestamp exists (finished_at or
+            # started_at), or just include if neither (back-fills don't have
+            # them).
+            skipped_base = skipped_base.filter(
+                (IngestJob.finished_at.is_(None))
+                | (IngestJob.finished_at >= window_start)
+            )
+
+    rows = base.with_entities(
+        IngestJob.stage, IngestJob.started_at, IngestJob.finished_at
+    ).all()
+    skipped_rows = skipped_base.with_entities(
+        IngestJob.stage, IngestJob.error_message
+    ).all()
+
+    per_stage: Dict[str, Dict[str, Any]] = {
+        s: {
+            "done_count": 0,
+            "active_seconds": 0.0,
+            "skipped_count": 0,
+            "skip_reasons": {},
+        }
+        for s in _PHASE_STAGES
+    }
+    total_active = 0.0
+    for stage, s_at, f_at in rows:
+        if stage not in per_stage:
+            continue
+        d = (f_at - s_at).total_seconds()
+        if d < 0:
+            continue
+        capped = min(d, _ACTIVE_CAP_SECONDS)
+        per_stage[stage]["done_count"] += 1
+        per_stage[stage]["active_seconds"] += capped
+        total_active += capped
+
+    for stage, reason in skipped_rows:
+        if stage not in per_stage:
+            continue
+        per_stage[stage]["skipped_count"] += 1
+        key = (reason or "unspecified")[:80]
+        per_stage[stage]["skip_reasons"][key] = (
+            per_stage[stage]["skip_reasons"].get(key, 0) + 1
+        )
+
+    phases = []
+    for s in _PHASE_STAGES:
+        info = per_stage[s]
+        n = info["done_count"]
+        active = info["active_seconds"]
+        mean = (active / n) if n else 0.0
+        pct = (100.0 * active / total_active) if total_active else 0.0
+        phases.append(
+            {
+                "stage": s,
+                "done_count": n,
+                "active_seconds": round(active, 2),
+                "mean_seconds_per_job": round(mean, 2),
+                "pct_of_total": round(pct, 1),
+                "skipped_count": info["skipped_count"],
+                "skip_reasons": info["skip_reasons"],
+            }
+        )
+
+    return {
+        "scope": scope,
+        "window_start": window_start.isoformat() if window_start else None,
+        "window_end": window_end.isoformat() if window_end else None,
+        "total_active_seconds": round(total_active, 2),
+        "phases": phases,
+    }

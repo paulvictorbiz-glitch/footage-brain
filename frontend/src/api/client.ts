@@ -569,4 +569,63 @@ export const api = {
     const { data } = await http.post('/thermal/batch', { batch_size: batchSize })
     return data
   },
+
+  // Pipeline stage toggles (persistent CLIP / VLM enable)
+  async getPipelineToggles(): Promise<{ clip_embed_enabled: boolean; caption_enabled: boolean }> {
+    const { data } = await http.get('/dashboard/pipeline-toggles')
+    return data
+  },
+  async setPipelineToggles(body: { clip_embed?: boolean; caption?: boolean }) {
+    const { data } = await http.post('/dashboard/pipeline-toggles', body)
+    return data as {
+      toggles: { clip_embed_enabled: boolean; caption_enabled: boolean }
+      paused: number
+      requeued: number
+      created: number
+    }
+  },
+
+  // Coverage tree (per-root → per-folder → per-stage completion)
+  async getCoverageTree() {
+    const { data } = await http.get('/dashboard/coverage-tree')
+    return data as {
+      stages: string[]
+      disabled_stages: string[]
+      roots: Array<{
+        root_id: string
+        label: string
+        path: string
+        is_online: boolean
+        file_count: number
+        stage_counts: Record<string, number>
+        skipped_counts: Record<string, number>
+        folders: Array<{
+          rel_path: string
+          file_count: number
+          stage_counts: Record<string, number>
+          skipped_counts: Record<string, number>
+        }>
+      }>
+    }
+  },
+
+  // Per-phase timing analytics
+  async getPhaseAnalytics(scope: 'latest' | 'all_time' = 'latest') {
+    const { data } = await http.get('/dashboard/phase-analytics', { params: { scope } })
+    return data as {
+      scope: string
+      window_start: string | null
+      window_end: string | null
+      total_active_seconds: number
+      phases: Array<{
+        stage: string
+        done_count: number
+        active_seconds: number
+        mean_seconds_per_job: number
+        pct_of_total: number
+        skipped_count: number
+        skip_reasons: Record<string, number>
+      }>
+    }
+  },
 }

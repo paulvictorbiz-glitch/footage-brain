@@ -313,6 +313,7 @@ def get_indexing_speed(session: Session = Depends(get_db_session)):
         paused = session.query(IngestJob).filter_by(stage=stage, status="paused").count()
         processing = session.query(IngestJob).filter_by(stage=stage, status="processing").count()
         failed = session.query(IngestJob).filter_by(stage=stage, status="failed").count()
+        skipped = session.query(IngestJob).filter_by(stage=stage, status="skipped").count()
 
         # Per-stage ETA: prefer the 10-min window when it has signal (more
         # responsive after model swaps or thermal pauses), otherwise fall back
@@ -333,6 +334,7 @@ def get_indexing_speed(session: Session = Depends(get_db_session)):
             "paused": paused,
             "processing": processing,
             "failed": failed,
+            "skipped": skipped,
             "eta_seconds": eta_seconds,
         })
 

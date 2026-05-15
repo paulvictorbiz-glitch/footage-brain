@@ -108,19 +108,14 @@ function FilterSidebar({ filters, onChange }: { filters: Filters; onChange: (f: 
     <div className="w-52 flex-shrink-0 border-r border-surface-4 overflow-y-auto p-4 space-y-5">
       <div>
         <p className="label mb-2">Search Mode</p>
-        <div className="space-y-1">
+        <div className="flex flex-wrap gap-1.5">
           {ALL_MODES.map((m) => {
             const isActive = filters.mode === m
-            const accent =
-              m === 'visual' ? 'bg-violet-900/40 text-violet-300' :
-              m === 'caption' ? 'bg-emerald-900/40 text-emerald-300' :
-              m === 'multimodal' ? 'bg-amber-900/40 text-amber-300' :
-              'bg-surface-3 text-zinc-100'
             return (
               <button key={m}
-                className={cn('w-full text-left px-2.5 py-1.5 rounded text-sm transition-colors',
-                  isActive ? accent : 'text-zinc-400 hover:bg-surface-3 hover:text-zinc-200')}
-                onClick={() => onChange({ ...filters, mode: m })}>
+                className={cn('dpill', isActive && 'is-active')}
+                onClick={() => onChange({ ...filters, mode: m })}
+                title={MODE_PLACEHOLDERS[m]}>
                 {MODE_LABELS[m]}
               </button>
             )

@@ -54,8 +54,14 @@ def _upsert_pending(session: Session, file_id: str, stage: str) -> None:
 def _files_missing_captions(session: Session) -> List[str]:
     """
     A file is "missing captions" if the captioner is now enabled, the file has
-    a real duration, and FrameCaption holds zero rows for it. This catches
-    files that the captioner skipped while CAPTIONER_ENABLED was False.
+    a real duration, and FrameCaption holds zero rows for it AND the file's
+    most recent caption ingest job is not already done/paused.
+
+    Why the extra job-status check: the captioner can legitimately end a run
+    with zero saved captions (frames couldn't be extracted, frames were
+    all-black, etc.) and still return success. Without this guard, reconcile
+    bounces those files back to `pending` on every backend startup — an
+    infinite reprocess loop. It also wipes user-paused jobs.
     """
     settings = get_settings()
     if not settings.captioner_enabled:
@@ -66,12 +72,24 @@ def _files_missing_captions(session: Session) -> List[str]:
         .group_by(FrameCaption.video_file_id)
         .subquery()
     )
+    # Exclude files whose latest caption job is already done, paused, or
+    # skipped — the job table is the source of truth for "should the worker
+    # run this stage." Skipped means the captioner intentionally bailed
+    # (e.g. no_frames_extracted); reconcile must not retry it.
+    already_settled = (
+        session.query(IngestJob.video_file_id)
+        .filter(IngestJob.stage == "caption")
+        .filter(IngestJob.status.in_(("done", "paused", "skipped")))
+        .distinct()
+        .subquery()
+    )
     rows = (
         session.query(VideoFile.id)
         .outerjoin(sub, VideoFile.id == sub.c.video_file_id)
         .filter(VideoFile.duration_seconds.isnot(None))
         .filter(VideoFile.duration_seconds >= 1)
         .filter((sub.c.n.is_(None)) | (sub.c.n == 0))
+        .filter(~VideoFile.id.in_(session.query(already_settled.c.video_file_id)))
         .all()
     )
     return [r[0] for r in rows]
@@ -106,17 +124,26 @@ def reconcile_streams(session: Session) -> Dict[str, int]:
     its actual on-disk artifacts. Safe to run repeatedly — it is idempotent
     and only mutates files that are demonstrably stale.
 
+    Skips toggleable stages (caption / clip_embed) when the user has paused
+    them via the persistent pipeline-settings toggle — otherwise a startup
+    reconcile would silently undo a pause and wipe the toggle marker.
+
     Returns a counts dict the caller can log or surface in the UI.
     """
+    # Defer import to avoid an import cycle (stage_settings imports nothing
+    # from app.db, but better safe at module load).
+    from app.ingest.stage_settings import is_stage_enabled
+
     counts: Dict[str, int] = {"caption": 0, "embed": 0}
 
-    for fid in _files_missing_captions(session):
-        vf = session.get(VideoFile, fid)
-        if vf is None:
-            continue
-        vf.captioned = False
-        _upsert_pending(session, fid, "caption")
-        counts["caption"] += 1
+    if is_stage_enabled("caption"):
+        for fid in _files_missing_captions(session):
+            vf = session.get(VideoFile, fid)
+            if vf is None:
+                continue
+            vf.captioned = False
+            _upsert_pending(session, fid, "caption")
+            counts["caption"] += 1
 
     for fid in _files_missing_transcript_vectors(session):
         vf = session.get(VideoFile, fid)
