@@ -31,8 +31,23 @@ import sqlite3
 from collections import defaultdict
 from datetime import datetime
 
-from app.db.models import TranscriptChunk, VideoFile
+from app.db.models import IngestJob, TranscriptChunk, VideoFile
 from app.db.session import get_session_factory
+
+
+def _queue_embed(session, vf_id: str) -> None:
+    """Re-queue the embed stage so the pipeline regenerates vectors from the
+    copied chunks (mirrors reconcile._upsert_pending). Without this, a clip
+    whose embed job was already 'done' would never become searchable."""
+    job = (session.query(IngestJob)
+           .filter_by(video_file_id=vf_id, stage="embed").first())
+    if job is None:
+        session.add(IngestJob(video_file_id=vf_id, stage="embed",
+                              status="pending"))
+        return
+    job.status = "pending"
+    job.attempts = 0
+    job.error_message = None
 
 
 def _load_old_index(old_db: str) -> dict:
@@ -67,8 +82,8 @@ def migrate(old_db: str, dry_run: bool = True, commit_every: int = 200,
             limit: int | None = None) -> dict:
     old = _load_old_index(old_db)
     c = {"old_transcribed_keys": len(old), "new_total": 0, "migrated": 0,
-         "chunks_copied": 0, "already_done": 0, "has_chunks_skip": 0,
-         "no_match": 0, "sha256_filled": 0, "errors": 0}
+         "chunks_copied": 0, "embed_requeued": 0, "already_done": 0,
+         "has_chunks_skip": 0, "no_match": 0, "sha256_filled": 0, "errors": 0}
 
     session = get_session_factory()()
     try:
@@ -105,6 +120,8 @@ def migrate(old_db: str, dry_run: bool = True, commit_every: int = 200,
                     c["chunks_copied"] += 1
                 vf.transcribed = True
                 vf.embedded = False
+                _queue_embed(session, vf.id)
+                c["embed_requeued"] += 1
                 if not vf.sha256 and hit["sha256"]:
                     vf.sha256 = hit["sha256"]
                     c["sha256_filled"] += 1
