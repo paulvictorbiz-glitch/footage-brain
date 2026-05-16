@@ -69,6 +69,11 @@ def _upsert_job(session: Session, file_id: str, stage: str) -> None:
 
 PIPELINE_STAGES = ["metadata", "hash", "thumbnail", "transcript", "embed", "clip_embed", "caption"]
 
+# Commit the walk in batches so a long scan doesn't hold the SQLite write
+# lock for its whole duration (which both starves and is starved by the
+# ingest pipeline worker — surfaces as "database is locked").
+SCAN_COMMIT_BATCH = 200
+
 
 def scan_root(session: Session, scan_root: ScanRoot) -> dict:
     """
@@ -85,6 +90,7 @@ def scan_root(session: Session, scan_root: ScanRoot) -> dict:
 
     logger.info("scan_start", root=str(root_path))
 
+    root_id = scan_root.id  # captured: ORM attr expires after a batch commit
     found = new = changed = errors = 0
 
     walk_iter = root_path.rglob("*") if scan_root.recursive else root_path.iterdir()
@@ -97,7 +103,7 @@ def scan_root(session: Session, scan_root: ScanRoot) -> dict:
         abs_path = str(entry.resolve())
 
         try:
-            vf, is_new = _get_or_create_file(session, abs_path, scan_root.id)
+            vf, is_new = _get_or_create_file(session, abs_path, root_id)
 
             if is_new:
                 new += 1
@@ -126,10 +132,18 @@ def scan_root(session: Session, scan_root: ScanRoot) -> dict:
 
         except Exception as exc:
             errors += 1
+            session.rollback()  # clear the poisoned tx so the scan continues
             logger.error("scan_file_error", path=abs_path, error=str(exc))
 
+        if found % SCAN_COMMIT_BATCH == 0:
+            try:
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                logger.warning("scan_batch_commit_failed", error=str(exc))
+
     scan_root.last_scanned_at = datetime.utcnow()
-    session.flush()
+    session.commit()
 
     summary = {
         "root": str(root_path),

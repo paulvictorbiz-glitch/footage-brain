@@ -32,6 +32,10 @@ def _get_engine():
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA synchronous=NORMAL")
+            # Wait up to 30s for a held write lock instead of failing
+            # instantly — lets a scan coexist with the ingest pipeline
+            # worker (single-writer SQLite) instead of "database is locked".
+            cursor.execute("PRAGMA busy_timeout=30000")
             cursor.close()
 
     return engine
