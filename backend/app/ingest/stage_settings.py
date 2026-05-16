@@ -19,9 +19,22 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 # Stages we let the user disable. Other stages always run.
-TOGGLEABLE_STAGES = ("clip_embed", "caption")
+TOGGLEABLE_STAGES = ("clip_embed", "caption", "hash")
 
-_DEFAULTS: Dict[str, bool] = {f"{s}_enabled": True for s in TOGGLEABLE_STAGES}
+# Per-stage default enabled state. `hash` exists only to populate the dedup
+# feature (duplicate groups / canonical / the unique_only|has_duplicates_only
+# filters); search, preview, timelines and transcription do not depend on it.
+# Full-file SHA256 over a large already-deduped library is pure cost, so it
+# defaults OFF. Flip `hash_enabled` true to restore dedup.
+_STAGE_DEFAULT_ENABLED: Dict[str, bool] = {
+    "clip_embed": True,
+    "caption": True,
+    "hash": False,
+}
+
+_DEFAULTS: Dict[str, bool] = {
+    f"{s}_enabled": _STAGE_DEFAULT_ENABLED.get(s, True) for s in TOGGLEABLE_STAGES
+}
 _LOCK = threading.Lock()
 _CACHE: Dict[str, bool] | None = None
 
