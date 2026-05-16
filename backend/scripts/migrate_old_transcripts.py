@@ -27,12 +27,18 @@ safe alongside the live pipeline.
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
-from collections import defaultdict
+import sys
 from datetime import datetime
+from pathlib import Path
+
+# Allow running as `python scripts/migrate_old_transcripts.py` from backend/
+# (not just `-m`): put backend/ on the path so `import app` resolves.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.db.models import IngestJob, TranscriptChunk, VideoFile
-from app.db.session import get_session_factory
+from app.db.session import get_session_factory, init_db
 
 
 def _queue_embed(session, vf_id: str) -> None:
@@ -54,7 +60,11 @@ def _load_old_index(old_db: str) -> dict:
     """key -> {"sha256": str|None, "chunks": [(idx,start,end,text,lang), ...]}.
     Only TRANSCRIBED old rows (carries the 'no speech, do not redo' verdict
     too). Duplicate keys keep the row with the most chunks."""
-    conn = sqlite3.connect(f"file:{old_db}?mode=ro", uri=True)
+    # Build a proper file URI (Windows abs paths need file:///C:/...).
+    uri = Path(old_db).resolve().as_uri()
+    if not os.path.isfile(old_db):
+        raise SystemExit(f"old DB not found: {old_db}")
+    conn = sqlite3.connect(f"{uri}?mode=ro", uri=True)
     try:
         rows = conn.execute(
             "SELECT id, filename, file_size, sha256 FROM video_files "
@@ -80,6 +90,7 @@ def _load_old_index(old_db: str) -> dict:
 
 def migrate(old_db: str, dry_run: bool = True, commit_every: int = 200,
             limit: int | None = None) -> dict:
+    init_db()  # idempotent: ensures the target DB has audio_path et al.
     old = _load_old_index(old_db)
     c = {"old_transcribed_keys": len(old), "new_total": 0, "migrated": 0,
          "chunks_copied": 0, "embed_requeued": 0, "already_done": 0,
