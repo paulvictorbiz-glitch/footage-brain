@@ -67,6 +67,7 @@ def _migrate_db() -> None:
     new_columns = [
         ("video_files", "clip_embedded", "BOOLEAN DEFAULT 0"),
         ("video_files", "captioned", "BOOLEAN DEFAULT 0"),
+        ("video_files", "audio_path", "VARCHAR(4096)"),
         ("timeline_clips", "timeline_start", "REAL"),
     ]
     with get_engine().connect() as conn:

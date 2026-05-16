@@ -98,7 +98,10 @@ def run_transcription(session: Session, vf: VideoFile) -> bool:
         session.flush()
         return True
 
-    segments = transcribe_file(vf.abs_path)
+    # Prefer the extracted sidecar audio when present (lets a small audio
+    # file be transcribed on a remote/GPU box); abs_path stays the original
+    # video location for "where is this clip".
+    segments = transcribe_file(vf.audio_path or vf.abs_path)
     if segments is None:
         return False
 

@@ -128,6 +128,11 @@ class VideoFile(Base):
     # Thumbnail
     thumbnail_path: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
 
+    # Sidecar audio for transcription. When set, the transcript stage reads
+    # this instead of abs_path, so a small extracted-audio file can be sent to
+    # a remote/GPU box while abs_path stays the original video location.
+    audio_path: Mapped[Optional[str]] = mapped_column(String(4096), nullable=True)
+
     # Pipeline state
     metadata_extracted: Mapped[bool] = mapped_column(Boolean, default=False)
     hashed: Mapped[bool] = mapped_column(Boolean, default=False)
