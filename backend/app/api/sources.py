@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
@@ -18,10 +19,11 @@ from app.api.schemas import (
     ScanRootUpdate,
 )
 from app.core.logging import get_logger
-from app.db.models import ScanRoot, VideoFile
+from app.db.models import ScanExclusion, ScanRoot, VideoFile
 from app.db.session import get_db_session
 from app.ingest.pipeline import get_pipeline_worker
 from app.ingest.scanner import scan_root as run_scan_root
+from app.vector.store import get_vector_store
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 logger = get_logger(__name__)
@@ -237,3 +239,67 @@ def relink_source(
         unmatched=unmatched,
         dry_run=False,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scan exclusions  (Coverage → "Exclude folder")
+# ─────────────────────────────────────────────────────────────────────────────
+
+class FolderExcludeRequest(BaseModel):
+    root_id: str
+    rel_path: str = ""  # "" => the whole root
+
+
+def _purge_prefix(session: Session, root: ScanRoot, prefix: str) -> dict:
+    """Delete every VideoFile under `prefix` (cascades ingest_jobs +
+    transcript_chunks) and best-effort drop their transcript vectors."""
+    sep = os.sep
+    files = session.query(VideoFile).filter_by(scan_root_id=root.id).all()
+    victims = [
+        vf for vf in files
+        if vf.abs_path == prefix or vf.abs_path.startswith(prefix + sep)
+    ]
+    vec_ids: list[str] = []
+    for vf in victims:
+        for ch in vf.transcript_chunks:
+            vec_ids.append(f"{vf.id}_{ch.chunk_index}")
+    for vf in victims:
+        session.delete(vf)  # cascades ingest_jobs + transcript_chunks
+    session.flush()
+    if vec_ids:
+        try:
+            get_vector_store().delete(vec_ids)
+        except Exception as exc:
+            logger.warning("exclude_vector_delete_failed", error=str(exc))
+    return {"deleted_files": len(victims), "deleted_vectors": len(vec_ids)}
+
+
+@router.get("/exclusions")
+def list_exclusions(session: Session = Depends(get_db_session)):
+    rows = session.query(ScanExclusion).order_by(ScanExclusion.created_at).all()
+    return [{"id": e.id, "path": e.path, "created_at": e.created_at} for e in rows]
+
+
+@router.post("/exclusions")
+def add_exclusion(
+    body: FolderExcludeRequest,
+    session: Session = Depends(get_db_session),
+):
+    root = session.get(ScanRoot, body.root_id)
+    if not root:
+        raise HTTPException(404, detail="Source not found")
+    prefix = os.path.normpath(
+        os.path.join(root.path, body.rel_path) if body.rel_path else root.path
+    )
+    if not session.query(ScanExclusion).filter_by(path=prefix).first():
+        session.add(ScanExclusion(path=prefix))
+    stats = _purge_prefix(session, root, prefix)
+    logger.info("folder_excluded", path=prefix, **stats)
+    return {"excluded_path": prefix, **stats}
+
+
+@router.delete("/exclusions/{exc_id}", status_code=204)
+def remove_exclusion(exc_id: str, session: Session = Depends(get_db_session)):
+    e = session.get(ScanExclusion, exc_id)
+    if e:
+        session.delete(e)

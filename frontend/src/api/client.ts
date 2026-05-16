@@ -313,6 +313,16 @@ export const api = {
     })
     return data
   },
+  async excludeFolder(
+    rootId: string,
+    relPath: string
+  ): Promise<{ excluded_path: string; deleted_files: number; deleted_vectors: number }> {
+    const { data } = await http.post('/sources/exclusions', {
+      root_id: rootId,
+      rel_path: relPath,
+    })
+    return data
+  },
 
   async getFolderStructure(): Promise<any> {
     const { data } = await http.get('/dashboard/folders')

@@ -14,13 +14,24 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.db.models import IngestJob, ScanRoot, VideoFile
+from app.db.models import IngestJob, ScanExclusion, ScanRoot, VideoFile
 
 logger = get_logger(__name__)
 
 
 def _is_video(path: Path, ext_set: set[str]) -> bool:
     return path.suffix.lower() in ext_set and path.is_file()
+
+
+def _excluded_prefixes(session: Session) -> list[str]:
+    return [e.path for e in session.query(ScanExclusion).all()]
+
+
+def _is_excluded(abs_path: str, prefixes: list[str]) -> bool:
+    for p in prefixes:
+        if abs_path == p or abs_path.startswith(p + os.sep):
+            return True
+    return False
 
 
 def _get_or_create_file(session: Session, abs_path: str, scan_root_id: str) -> tuple[VideoFile, bool]:
@@ -91,6 +102,7 @@ def scan_root(session: Session, scan_root: ScanRoot) -> dict:
     logger.info("scan_start", root=str(root_path))
 
     root_id = scan_root.id  # captured: ORM attr expires after a batch commit
+    excluded = _excluded_prefixes(session)
     found = new = changed = errors = 0
 
     walk_iter = root_path.rglob("*") if scan_root.recursive else root_path.iterdir()
@@ -99,8 +111,11 @@ def scan_root(session: Session, scan_root: ScanRoot) -> dict:
         if not _is_video(entry, ext_set):
             continue
 
-        found += 1
         abs_path = str(entry.resolve())
+        if _is_excluded(abs_path, excluded):
+            continue
+
+        found += 1
 
         try:
             vf, is_new = _get_or_create_file(session, abs_path, root_id)

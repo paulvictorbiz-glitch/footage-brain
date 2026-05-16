@@ -8,8 +8,8 @@
  *   dashed = stage disabled by current CLIP/VLM toggle
  */
 import { useMemo, useState } from 'react'
-import { useQuery } from 'react-query'
-import { ChevronDown, ChevronRight, Network } from 'lucide-react'
+import { useQuery, useQueryClient } from 'react-query'
+import { ChevronDown, ChevronRight, Network, Trash2 } from 'lucide-react'
 import { api } from '@/api/client'
 import { PageHeader } from '@/components/PageHeader'
 import { cn, formatBytes } from '@/lib/utils'
@@ -101,6 +101,7 @@ function StageLegend({ stages, disabled }: { stages: string[]; disabled: Set<str
 }
 
 export default function CoveragePage() {
+  const qc = useQueryClient()
   const { data, isLoading } = useQuery('coverage-tree', () => api.getCoverageTree(), {
     refetchInterval: 15000,
   })
@@ -239,6 +240,23 @@ export default function CoveragePage() {
                                   total={folder.file_count}
                                   disabled={disabledSet}
                                 />
+                                <button
+                                  className="dpill !py-0 ml-1 shrink-0"
+                                  title="Exclude this folder from scans and delete its indexed clips"
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        `Exclude "${folder.rel_path || '(root)'}" and permanently delete its ${folder.file_count} indexed file(s) — transcripts + vectors included? Future scans will skip it.`
+                                      )
+                                    ) {
+                                      api
+                                        .excludeFolder(root.root_id, folder.rel_path)
+                                        .then(() => qc.invalidateQueries('coverage-tree'))
+                                    }
+                                  }}
+                                >
+                                  <Trash2 size={11} />
+                                </button>
                               </div>
                             )
                           })}

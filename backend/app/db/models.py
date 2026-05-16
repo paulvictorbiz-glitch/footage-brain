@@ -329,3 +329,17 @@ class SavedSearch(Base):
     query: Mapped[str] = mapped_column(Text, nullable=False)
     filters: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scan Exclusions
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ScanExclusion(Base):
+    """A folder path prefix to skip during scans. Files already indexed under
+    it are purged when the exclusion is created (user-chosen behaviour)."""
+    __tablename__ = "scan_exclusions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    path: Mapped[str] = mapped_column(String(4096), unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
