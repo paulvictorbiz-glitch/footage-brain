@@ -174,22 +174,16 @@ def rebuild_all_streams(
     `streams` defaults to all three semantic streams: transcript embedding,
     CLIP frame embedding, and VLM captioning.
     """
-    streams = streams or ["embed", "clip_embed", "caption"]
-    flag_for = {
-        "embed": "embedded",
-        "clip_embed": "clip_embedded",
-        "caption": "captioned",
-        "transcript": "transcribed",
-    }
+    from app.ingest.stages import STREAM_STAGES, reset_flag
+
+    streams = streams or list(STREAM_STAGES)
 
     counts: Dict[str, int] = {s: 0 for s in streams}
     vfs: List[VideoFile] = session.query(VideoFile).all()
 
     for vf in vfs:
         for stage in streams:
-            flag = flag_for.get(stage)
-            if flag and hasattr(vf, flag):
-                setattr(vf, flag, False)
+            reset_flag(vf, stage)
             _upsert_pending(session, vf.id, stage)
             counts[stage] += 1
 

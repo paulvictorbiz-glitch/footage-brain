@@ -11,7 +11,14 @@ import { PageHeader } from '@/components/PageHeader'
 import { VideoCard } from '@/components/VideoCard'
 import { cn, formatDuration } from '@/lib/utils'
 
-type SearchMode = 'semantic' | 'keyword' | 'hybrid' | 'visual' | 'caption' | 'multimodal'
+import {
+  type SearchMode,
+  ALL_SEARCH_MODES as ALL_MODES,
+  SEARCH_MODE_LABELS as MODE_LABELS,
+  SEARCH_MODE_PLACEHOLDERS as MODE_PLACEHOLDERS,
+  isVisualMode,
+  asSearchMode,
+} from '@/lib/search-modes'
 
 interface Filters {
   mode: SearchMode
@@ -27,36 +34,8 @@ interface Filters {
 
 const STORAGE_KEY = 'footage-search-mode'
 
-const ALL_MODES: readonly SearchMode[] = [
-  'semantic', 'keyword', 'hybrid', 'visual', 'caption', 'multimodal',
-] as const
-
 function getSavedMode(): SearchMode {
-  const v = localStorage.getItem(STORAGE_KEY) as SearchMode | null
-  if (v && ALL_MODES.includes(v)) return v
-  return 'semantic'
-}
-
-const MODE_LABELS: Record<SearchMode, string> = {
-  semantic: 'Semantic',
-  keyword: 'Keyword',
-  hybrid: 'Hybrid',
-  visual: 'Visual (CLIP)',
-  caption: 'Caption (VLM)',
-  multimodal: 'Multimodal',
-}
-
-const MODE_PLACEHOLDERS: Record<SearchMode, string> = {
-  semantic: 'sunrise drone shot mountains, person talking indoors, clips mentioning Syria…',
-  keyword: 'exact words from transcript or filename…',
-  hybrid: 'mixes semantic + keyword — best for named entities…',
-  visual: 'talking head shot, aerial coastline, person explaining something, drone over city…',
-  caption: 'wide shot of empty diner at dusk, two people arguing in a kitchen…',
-  multimodal: 'describe a moment — speech, visual, and caption are all searched at once…',
-}
-
-function isVisualMode(m: SearchMode): boolean {
-  return m === 'visual' || m === 'caption' || m === 'multimodal'
+  return asSearchMode(localStorage.getItem(STORAGE_KEY)) ?? 'semantic'
 }
 
 const defaultFilters: Filters = { mode: 'semantic' }

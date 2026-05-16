@@ -14,9 +14,20 @@ from app.api.schemas import (
     SearchResultOut,
 )
 from app.db.session import get_db_session
-from app.search.engine import SearchFilters, search
+from app.search.engine import SEARCH_MODES, SearchFilters, search
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+
+@router.get("/modes")
+def get_search_modes():
+    """
+    Supported search modes. The frontend fetches this at startup to detect
+    backend/frontend drift (e.g. you renamed `multimodal` in the engine but
+    the React code still says `multimodal`). Stays in sync with
+    frontend/src/lib/search-modes.ts.
+    """
+    return {"modes": list(SEARCH_MODES)}
 
 
 @router.post("", response_model=SearchResponse)

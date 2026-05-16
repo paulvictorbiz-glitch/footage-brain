@@ -14,103 +14,12 @@ import {
 } from 'lucide-react'
 import { api, TimelineClip, SearchResult } from '@/api/client'
 import { cn } from '@/lib/utils'
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const SPEEDS   = [1, 2, 4, 8]
-const SNAP_THR = 0.5
-const MIN_W_PX = 20
-const LABEL_W  = 48
-const MIN_DUR  = 0.5
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-type Tool = 'select' | 'razor' | 'hand'
-interface StripClip extends TimelineClip { start: number }
-interface UndoEntry { label: string; clips: StripClip[] }
-interface TrimPreview { clipId: string; inPt: number; outPt: number; start: number }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(sec?: number | null): string {
-  if (sec == null) return '—'
-  const m  = Math.floor(sec / 60)
-  const s  = Math.floor(sec % 60)
-  const ds = Math.floor((sec % 1) * 10)
-  return `${m}:${String(s).padStart(2, '0')}.${ds}`
-}
-
-function fmtShort(sec: number): string {
-  const m = Math.floor(sec / 60)
-  const s = Math.floor(sec % 60)
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function clipDur(clip: TimelineClip): number {
-  const i = clip.in_point  ?? 0
-  const o = clip.out_point ?? (clip.video_file.duration_seconds ?? 0)
-  return Math.max(0, o - i)
-}
-
-function resolveStarts(clips: TimelineClip[]): StripClip[] {
-  const sorted = [...clips].sort((a, b) => {
-    if (a.timeline_start != null && b.timeline_start != null)
-      return a.timeline_start - b.timeline_start
-    return (a.position ?? 0) - (b.position ?? 0)
-  })
-  const anySet = sorted.some(c => c.timeline_start != null && c.timeline_start > 0)
-  if (!anySet) {
-    let pos = 0
-    return sorted.map(c => { const s = pos; pos += clipDur(c); return { ...c, start: s } })
-  }
-  return sorted.map(c => ({ ...c, start: c.timeline_start ?? 0 }))
-}
-
-function snapToEdges(
-  rawStart: number, dur: number,
-  others: { start: number; dur: number }[],
-  threshold: number,
-): { snapped: number; line: number | null } {
-  const rawEnd = rawStart + dur
-  for (const o of others) {
-    const oEnd = o.start + o.dur
-    if (Math.abs(rawStart - oEnd)    < threshold) return { snapped: oEnd,          line: oEnd }
-    if (Math.abs(rawStart - o.start) < threshold) return { snapped: o.start,       line: o.start }
-    if (Math.abs(rawEnd   - o.start) < threshold) return { snapped: o.start - dur, line: o.start }
-    if (Math.abs(rawEnd   - oEnd)    < threshold) return { snapped: oEnd - dur,    line: oEnd }
-  }
-  return { snapped: rawStart, line: null }
-}
-
-function rulerInterval(zoom: number): number {
-  if (zoom >= 60) return 1
-  if (zoom >= 30) return 2
-  if (zoom >= 15) return 5
-  if (zoom >= 6)  return 10
-  return 30
-}
-
-function clipHue(id: string): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff
-  return h % 360
-}
-
-function filmstripBg(hue: number, count: number): string {
-  const parts: string[] = []
-  for (let i = 0; i < count; i++) {
-    const a = ((i / count) * 100).toFixed(1)
-    const b = (((i + 0.45) / count) * 100).toFixed(1)
-    parts.push(`hsl(${hue},38%,19%) ${a}%`, `hsl(${hue},38%,13%) ${b}%`)
-  }
-  return `linear-gradient(90deg,${parts.join(',')})`
-}
-
-function audioWavePts(id: string, barCount: number): number[] {
-  let seed = 0
-  for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) & 0x7fffffff
-  return Array.from({ length: barCount }, () => {
-    seed = (seed * 1664525 + 1013904223) & 0x7fffffff
-    return 3 + ((seed >>> 16) & 0xff) / 255 * 22
-  })
-}
+import {
+  SPEEDS, SNAP_THR, MIN_W_PX, LABEL_W, MIN_DUR,
+  fmt, fmtShort, clipDur, resolveStarts, snapToEdges,
+  rulerInterval, clipHue, filmstripBg, audioWavePts,
+} from '@/components/timeline/helpers'
+import type { StripClip, Tool, UndoEntry, TrimPreview } from '@/components/timeline/types'
 
 // ─── Scrubber ─────────────────────────────────────────────────────────────────
 interface ScrubberProps {

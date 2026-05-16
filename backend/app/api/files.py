@@ -119,23 +119,12 @@ def reprocess_file(
 
     # Each pipeline stage guards on a "is this already done?" flag on VideoFile;
     # if we just re-queue the job, the handler returns immediately and the
-    # stage never actually re-runs. Reset the matching flag(s) alongside the
-    # job so reprocess does the work the caller actually asked for.
-    stage_flag = {
-        "metadata": "metadata_extracted",
-        "hash": "hashed",
-        "thumbnail": None,
-        "transcript": "transcribed",
-        "embed": "embedded",
-        "clip_embed": "clip_embedded",
-        "caption": "captioned",
-        "keyframes": "keyframes_extracted",
-    }
+    # stage never actually re-runs. reset_flag() centralises the mapping
+    # so adding a new stage means updating one dict in app/ingest/stages.py.
+    from app.ingest.stages import reset_flag
 
     for stage in target_stages:
-        flag = stage_flag.get(stage)
-        if flag is not None and hasattr(vf, flag):
-            setattr(vf, flag, False)
+        reset_flag(vf, stage)
         if stage == "thumbnail":
             vf.thumbnail_path = None
 

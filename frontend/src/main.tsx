@@ -5,7 +5,15 @@ import { QueryClient, QueryClientProvider } from 'react-query'
 import { Toaster } from 'react-hot-toast'
 
 import './index.css'
+import { api } from './api/client'
+import { checkSearchModesInSync } from './lib/search-modes'
 import { AppShell } from './components/AppShell'
+import { IntroSplash } from './components/IntroSplash'
+
+// Fire-and-forget startup check. If the backend's search-mode list drifts
+// from the frontend's, a single console.warn surfaces it. Failures are
+// silent (backend down / pre-endpoint).
+checkSearchModesInSync(() => api.getSearchModes())
 import DashboardPage from './pages/Dashboard'
 import SearchPage from './pages/Search'
 import FileDetailPage from './pages/FileDetail'
@@ -14,6 +22,7 @@ import SourcesPage from './pages/Sources'
 import FoldersPage from './pages/Folders'
 import TimelinePage from './pages/Timeline'
 import CoveragePage from './pages/Coverage'
+import DiagnosePage from './pages/Diagnose'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +38,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <IntroSplash />
         <AppShell>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
@@ -40,6 +50,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/coverage" element={<CoveragePage />} />
             <Route path="/timeline" element={<TimelinePage />} />
             <Route path="/timeline/:id" element={<TimelinePage />} />
+            <Route path="/diagnose" element={<DiagnosePage />} />
           </Routes>
         </AppShell>
         <Toaster

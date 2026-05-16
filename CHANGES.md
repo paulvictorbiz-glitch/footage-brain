@@ -342,6 +342,267 @@ toggle in the card header.
 
 ---
 
+## 2026-05-15 — Intro splash: "hello paul" wavy greeting on startup
+
+**Goal:** small joy on every cold load. Full-screen splash that fades in,
+renders "hello paul" with each letter bobbing in a staggered wave, then
+auto-fades out after ~2.5s. Click anywhere to dismiss early. App renders
+underneath the whole time so the splash is purely cosmetic.
+
+**Plan**
+
+1. NEW `frontend/src/components/IntroSplash.tsx` — a fixed-position overlay
+   that mounts once and unmounts itself after the fade-out. Letters use a
+   per-character `animationDelay` driving a shared `wave` keyframe.
+2. Define the `wave` and `splash-fade` keyframes in `frontend/src/index.css`
+   under `@layer utilities` (project pattern).
+3. Mount `<IntroSplash />` once in `frontend/src/main.tsx` alongside
+   `<AppShell>` so it appears on initial load regardless of route.
+
+**What changed**
+
+- NEW `frontend/src/components/IntroSplash.tsx` — 45-line state machine: `showing` → `fading` → `gone`. Each letter gets a `90 * i` ms `animationDelay` driving the shared `intro-wave` keyframe.
+- `frontend/src/index.css` — added `@keyframes intro-wave / intro-fade-in / intro-fade-out` plus `.intro-splash` / `.intro-splash-text` / `.intro-splash-letter` styles. Splash uses `font-family: 'Cormorant Garamond'` (the existing `font-display` family) at cyan `#6bd6e0` (the accent colour) with a soft glow.
+- `frontend/src/main.tsx` — `<IntroSplash />` mounted once at the BrowserRouter level.
+
+**Verification**
+
+- `tsc --noEmit` clean.
+
+**Status:** ✅ committed 2026-05-15 (user sign-off).
+
+---
+
+## 2026-05-15 — Search-diagnose tool
+
+**Goal:** a single page that runs one query through every search mode
+(semantic / keyword / hybrid / visual / caption / multimodal) and shows the
+top-3 results side-by-side. Lets the user sanity-check that each mode
+actually retrieves sensible clips without clicking through six times in the
+main Search UI.
+
+**Plan**
+
+1. Backend: new `GET /api/tools/search-diagnose?q=<query>&n=3` — invokes
+   each mode in `SEARCH_MODES`, returns `{query, n, results: {mode: [...]}}`.
+   Reuses the existing `search.engine.search()` dispatcher so any future
+   mode added there is picked up automatically.
+2. Frontend: new `/diagnose` page with an input + six columns rendering the
+   top-3 results per mode. Reuses the existing `SearchResultOut` shape and
+   thumbnail/snippet markup from the main Search page.
+3. Add a nav link in `AppShell.tsx`.
+
+**What changed**
+
+- NEW `GET /api/tools/search-diagnose?q=<query>&n=<top-N>` in `backend/app/api/tools.py` — invokes `search()` once per mode in `SEARCH_MODES`, returns a per-mode top-N projection with thumbnail, snippet, frame timestamp, score. Per-mode failures are surfaced as `{"_error": "..."}` instead of failing the whole request.
+- NEW `api.searchDiagnose(q, n)` client method in `frontend/src/api/client.ts`.
+- NEW `frontend/src/pages/Diagnose.tsx` — input + top-N selector + six side-by-side mode cards. Visual / Caption / Multimodal columns get coloured left-borders (violet / emerald / amber) so the multimodal column draws the eye. Each result row links to `/files/:id?t=<seconds>` when a frame timestamp is present, so clicking deep-links to the matched moment.
+- NEW `/diagnose` route in `frontend/src/main.tsx`; NEW nav entry "Diagnose" in the Library section of `AppShell.tsx` (TestTube2 icon).
+
+**Verification**
+
+- Backend: `create_app()` registers `/api/tools/search-diagnose` (confirmed via route enumeration).
+- `tsc --noEmit` clean.
+- Running server doesn't have the endpoint yet — needs a backend restart. The frontend was hot-reloaded so the nav link + page are already live, but clicking "Run" will fail until the restart completes.
+
+**Status:** ✅ committed 2026-05-15 (user sign-off).
+
+---
+
+## 2026-05-15 — Tier 3 refactor: split dashboard.py + sync search modes + split Timeline.tsx
+
+**Items in this batch:**
+
+**#9 — Split `api/dashboard.py` (641 lines) into focused route files.**
+Today the file mixes 19 endpoints across 5 concerns: stats, jobs (queue +
+pause/resume), streams (reconcile + rebuild), folders/coverage, and analytics.
+Splitting into `api/dashboard/` package:
+
+```
+backend/app/api/dashboard/
+  __init__.py        (the APIRouter, re-exports everything)
+  stats.py           (dashboard stats endpoint)
+  jobs.py            (queue, cancel, pause, resume, reset-failed, skip-stage, restore, stage-status, create-clip-embed)
+  streams.py         (reconcile, rebuild)
+  folders.py         (folders, coverage-tree)
+  analytics.py       (phase-analytics)
+  settings.py        (settings, pipeline-toggles)
+```
+
+URL paths preserved exactly — only the source location changes.
+
+**#10 — Sync-check search modes backend↔frontend.** Lighter scope than
+originally proposed: instead of making the frontend fetch the mode list at
+runtime (which would lose compile-time type safety), expose
+`GET /api/search/modes` returning the backend's list of supported modes, and
+have the frontend's app shell call it once at boot. On mismatch, emit a
+console warning. Catches "I renamed `multimodal` in the backend but forgot
+the frontend" silently for the next dev to fix.
+
+**#8 — Split `Timeline.tsx` (1301 lines) into smaller files.** Surveying
+shows nine inline components + 8 helper functions + 5 constants. Plan to
+extract co-located primitives into `components/timeline/`:
+
+```
+frontend/src/components/timeline/
+  helpers.ts          (fmt/fmtShort/clipDur/resolveStarts/snapToEdges/rulerInterval/clipHue/filmstripBg/audioWavePts + constants)
+  ExportMenu.tsx
+  SourceBin.tsx
+  Monitors.tsx        (Scrubber + SourceMonitor + ProgramMonitor)
+  Tracks.tsx          (VideoTrack + AudioTrack + Ruler)
+```
+
+`TimelineEditor` (the heavy 585-line state machine) stays in Timeline.tsx
+for now — its internal state graph is tightly coupled and pulling it apart
+needs a bigger contract change than this refactor batch warrants.
+
+**Scope revision during execution:** for #8, only the helpers + types were
+extracted. Component extraction (SourceBin, Monitors, Tracks, ExportMenu) was
+deferred — each has a prop interface tightly coupled to TimelineEditor's
+state, and pulling them apart safely needs a bigger contract change. The
+`components/timeline/` directory is now in place so the future split has a
+home.
+
+**What changed**
+
+- DELETED `backend/app/api/dashboard.py` (641 lines).
+- NEW `backend/app/api/dashboard/` package: `__init__.py` (parent router), `stats.py`, `jobs.py`, `streams.py`, `folders.py`, `analytics.py`, `settings.py`. 19 dashboard routes preserved at identical URLs.
+- NEW `SEARCH_MODES` constant in `backend/app/search/engine.py`.
+- NEW `GET /api/search/modes` endpoint in `backend/app/api/search.py`.
+- NEW `frontend/src/lib/search-modes.ts:checkSearchModesInSync()` — async startup check, warns on drift, swallows failures.
+- NEW `api.getSearchModes()` client method.
+- `frontend/src/main.tsx` calls the check at boot.
+- NEW `frontend/src/components/timeline/helpers.ts` (120 lines) — 5 constants + 9 functions.
+- NEW `frontend/src/components/timeline/types.ts` (27 lines) — `Tool`, `StripClip`, `UndoEntry`, `TrimPreview`.
+- `frontend/src/pages/Timeline.tsx` — 1301 → 1210 lines; inline helpers/types/constants replaced by imports.
+
+**Verification**
+
+- Python: `create_app()` → 19 dashboard sub-routes preserved, `SEARCH_MODES` tuple of 6, total app routes 76 → 77.
+- `tsc --noEmit` clean.
+- Pre-restart server still serves old endpoints — refactor activates on next backend restart.
+
+**Status:** ✅ committed 2026-05-15 (user sign-off).
+
+---
+
+## 2026-05-15 — Tier 2 refactor: docs reorg, caption merge, Dashboard split
+
+**Goal:** continue the ziflow-style cleanup with three medium-effort items.
+All low/medium risk, no behavior change.
+
+**Items:**
+
+7. **Move portable docs into `docs/portable/`.** 5 root-level markdown files
+   (`MOVE_BETWEEN_COMPUTERS.md`, `PORTABLE_PLAN.md`, `PORTABLE_TEST_PLAN.md`,
+   `PORTABLE_WINDOWS_README.md`, `SELF_CONTAINED_DEPLOYMENT.md`) all describe
+   portable-mode workflows. Move them into `docs/portable/` to bring the root
+   from 10 MDs down to 5. No code references — only a self-reference inside
+   `PORTABLE_PLAN.md` (a tree diagram listing itself), which can stay as-is.
+
+5. **Merge `captioner.py` + `caption_embedder.py` → `caption.py`.** Two
+   tightly-coupled files today:
+
+   - `app/ingest/captioner.py` (113 lines) — VLM model loader, exports
+     `caption_images()`.
+   - `app/ingest/caption_embedder.py` (183 lines) — pipeline stage handler,
+     exports `caption_video()`, internally imports `caption_images` from
+     `captioner`.
+
+   Only callers of either file are: `pipeline.py` (uses `caption_video`) and
+   `caption_embedder` itself (uses `caption_images`). Matches the sibling
+   `clip_embedder.py` pattern which keeps model loader + stage handler in
+   one file. Merging clarifies ownership and trims one intra-module import.
+
+   `pipeline.py:26` currently: `from app.ingest.caption_embedder import caption_video`.
+
+6. **Split `Dashboard.tsx` (579 lines) into per-card files** under
+   `frontend/src/components/cards/`. Today the page contains:
+
+   - `StorageBar` (helper, ~15 lines) — used only by DriveHealthCard
+   - `DriveHealthCard` (~60 lines)
+   - `formatEtaSeconds` (helper, ~12 lines) — used only by IndexingSpeedCard
+   - `IndexingSpeedCard` (~310 lines, the heavy one — pause/resume/skip,
+     reconcile/rebuild buttons, per-stage bars with ETAs)
+   - `ProjectBreakdownCard` (~25 lines)
+   - `DashboardPage` (~135 lines, the layout/grid + storage warnings)
+
+   Target layout:
+   ```
+   frontend/src/components/cards/
+     DriveHealthCard.tsx        (DriveHealthCard + StorageBar)
+     IndexingSpeedCard.tsx      (IndexingSpeedCard + formatEtaSeconds)
+     ProjectBreakdownCard.tsx
+   frontend/src/pages/Dashboard.tsx  (just imports + DashboardPage)
+   ```
+
+   No external consumers of any sub-card today, so this is a self-contained move.
+
+**What changed**
+
+- 5 docs `git mv`d from project root into `docs/portable/`. Root MD count: 10 → 5. No code references; preserved through git rename detection so history follows.
+- NEW `backend/app/ingest/caption.py` — merged content of the two old files; deletes (`git rm`) `captioner.py` (113 lines) and `caption_embedder.py` (183 lines). The intra-module `from app.ingest.captioner import caption_images` import inside the stage handler is gone (same file now). Preserves the `StageSkip` raise path and the empty-captions / no-frames branches.
+- `backend/app/ingest/pipeline.py:26` — `from app.ingest.caption_embedder import caption_video` → `from app.ingest.caption import caption_video`.
+- NEW `frontend/src/components/cards/DriveHealthCard.tsx` — exports both `DriveHealthCard` and `StorageBar` (StorageBar is still used by the Dashboard page directly for the storage-by-source list, so it stays co-exported).
+- NEW `frontend/src/components/cards/IndexingSpeedCard.tsx` — exports `IndexingSpeedCard`; co-locates `formatEtaSeconds` (used only here).
+- NEW `frontend/src/components/cards/ProjectBreakdownCard.tsx`.
+- `frontend/src/pages/Dashboard.tsx` — went from 579 lines to 140; now just imports + the `DashboardPage` layout/grid + the page's job-queue card.
+
+**Verification**
+
+- Backend: `python -c "from app.ingest.caption import ...; from app.main import create_app; app=create_app()"` → 76 routes, all imports clean, `STAGE_HANDLERS['caption']` correctly bound to the merged module.
+- Frontend: `tsc --noEmit` → clean. `wc -l` confirms split: Dashboard 140, DriveHealthCard 92, IndexingSpeedCard 332, ProjectBreakdownCard 29 (total 593, was 579 — +14 from per-file import headers).
+- Running pre-refactor server still responds 200 on /health and POST /streams/reconcile (the running binary is still on the older code; backend restart needed to pick up the rename, frontend hot-reloads).
+
+**Status:** ✅ committed 2026-05-15 (user sign-off).
+
+---
+
+## 2026-05-15 — Tier 1 refactor: dedup stage maps + extract frontend metadata
+
+**Goal:** kill four duplications surfaced by the refactor survey. Mechanical
+moves only — no behavior changes. Risk: very low across the board, verified
+by import smoke + `tsc --noEmit`.
+
+**Items in this batch:**
+
+1. **Single source for stage↔flag mapping.** Three copies today:
+
+   - `backend/app/api/files.py:124` — `stage_flag = {"metadata": "metadata_extracted", "hash": "hashed", "thumbnail": None, "transcript": "transcribed", "embed": "embedded", "clip_embed": "clip_embedded", "caption": "captioned", "keyframes": "keyframes_extracted"}`
+   - `backend/app/ingest/reconcile.py:178` — `flag_for = {"embed": "embedded", "clip_embed": "clip_embedded", "caption": "captioned", "transcript": "transcribed"}`
+   - `backend/app/ingest/pipeline.py:120` — `stage_order = ["metadata", "hash", "thumbnail", "transcript", "embed", "clip_embed", "caption"]`
+
+   Move into one new module `backend/app/ingest/stages.py` exporting `STAGE_FLAG` and `STAGE_ORDER`. Consumers import from there.
+
+2. **Frontend stage colors/labels.** Currently lives in `Dashboard.tsx:137-152` as `stageColors` / `stageLabels` dicts (added today). Hoist to `frontend/src/lib/stages.ts` so future pipeline-aware components don't re-roll their own palettes.
+
+3. **Search-mode metadata.** Currently in `Search.tsx`: `SearchMode` type, `ALL_MODES`, `MODE_LABELS`, `MODE_PLACEHOLDERS`, `isVisualMode`. Hoist to `frontend/src/lib/search-modes.ts`.
+
+4. **Delete stray `{backend/` directory.** Created by a typo earlier, gitignored, holds nothing meaningful. `rm -rf` cleanup.
+
+**What changed**
+
+- NEW `backend/app/ingest/stages.py` — exports `STAGE_ORDER` (8 entries), `STAGE_FLAG` (8 mappings, one per stage), `STREAM_STAGES` (3 entries: `embed`, `clip_embed`, `caption`), and `reset_flag(vf, stage)` helper.
+- `backend/app/ingest/pipeline.py:_get_pending_job_ids` now imports `STAGE_ORDER` instead of hardcoding the list.
+- `backend/app/api/files.py:reprocess_file` now calls `reset_flag(vf, stage)` — the 8-entry `stage_flag` dict is gone.
+- `backend/app/ingest/reconcile.py:rebuild_all_streams` now uses `STREAM_STAGES` + `reset_flag` — the 4-entry `flag_for` dict is gone. Default `streams` arg derives from `STREAM_STAGES`.
+- NEW `frontend/src/lib/stages.ts` — exports `StageKey` type, `STAGE_ORDER`, `STAGE_LABELS`, `STAGE_COLORS`, plus `stageLabel(s)` / `stageColor(s)` helpers that accept arbitrary strings and fall back gracefully.
+- `frontend/src/pages/Dashboard.tsx` — local `stageColors` / `stageLabels` dicts removed, replaced with `stageLabel(...)` / `stageColor(...)` helper calls.
+- NEW `frontend/src/lib/search-modes.ts` — exports `SearchMode` type, `ALL_SEARCH_MODES`, `SEARCH_MODE_LABELS`, `SEARCH_MODE_PLACEHOLDERS`, `isVisualMode`, `asSearchMode`.
+- `frontend/src/pages/Search.tsx` — local mode metadata removed, imports from `@/lib/search-modes`. `getSavedMode()` now uses `asSearchMode()` for narrowing.
+- `frontend/src/api/client.ts` — `SearchRequest.mode` field now references `SearchMode` from the shared module (was a duplicated inline union).
+- DELETED `{backend/` stray directory at project root.
+
+**Verification**
+
+- `python -c "from app.ingest.stages import ...; ...; app = create_app()"` → imports OK, 8 stages, 3 streams, app builds with 76 routes.
+- `tsc --noEmit` → clean (after switching from direct `stageColors[...]` indexing to the `stageColor(...)` helper, since the new strongly-typed `Record<StageKey,string>` rejects `string` indexers).
+- Running server (pre-refactor binary on PID earlier in session) → still responds 200 on `/health` and `POST /api/dashboard/streams/reconcile`. Refactor changes activate at next restart.
+
+**Status:** ✅ committed 2026-05-15 (user sign-off).
+
+---
+
 ## 2026-05-15 — Initialize git repo and push to GitHub (checkpoint)
 
 **Goal:** snapshot the project as a recoverable checkpoint on GitHub.

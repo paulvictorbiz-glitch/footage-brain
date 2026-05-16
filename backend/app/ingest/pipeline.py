@@ -23,7 +23,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.db.models import IngestJob, VideoFile
 from app.db.session import get_db
-from app.ingest.caption_embedder import caption_video
+from app.ingest.caption import caption_video
 from app.ingest.clip_embedder import clip_embed_video
 from app.ingest.embedder import embed_video_chunks
 from app.ingest.hasher import hash_and_dedup
@@ -117,7 +117,7 @@ def _process_job(job_id: str) -> None:
 
 
 def _get_pending_job_ids(session: Session, limit: int = 50) -> List[str]:
-    stage_order = ["metadata", "hash", "thumbnail", "transcript", "embed", "clip_embed", "caption"]
+    from app.ingest.stages import STAGE_ORDER
 
     # Filter out stages the user has disabled (clip_embed / caption).
     # Already-running jobs aren't affected — they're past this query.
@@ -132,7 +132,7 @@ def _get_pending_job_ids(session: Session, limit: int = 50) -> List[str]:
 
     def priority(j):
         try:
-            return stage_order.index(j.stage)
+            return STAGE_ORDER.index(j.stage)
         except ValueError:
             return 99
 

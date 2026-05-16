@@ -10,6 +10,7 @@ import {
   Cpu,
   Clapperboard,
   Network,
+  TestTube2,
   Menu,
   Bell,
   ChevronDown,
@@ -41,6 +42,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/',           icon: LayoutDashboard, label: 'Overview',    end: true },
       { to: '/search',     icon: Search,          label: 'Search' },
+      { to: '/diagnose',   icon: TestTube2,       label: 'Diagnose' },
       { to: '/folders',    icon: Folder,          label: 'Folders' },
       { to: '/coverage',   icon: Network,         label: 'Coverage' },
       { to: '/duplicates', icon: Copy,            label: 'Duplicates', badgeKey: 'duplicates' },

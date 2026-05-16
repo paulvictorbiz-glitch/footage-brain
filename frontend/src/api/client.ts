@@ -132,7 +132,7 @@ export interface SearchResponse {
 
 export interface SearchRequest {
   query?: string
-  mode?: 'semantic' | 'keyword' | 'hybrid' | 'visual' | 'caption' | 'multimodal'
+  mode?: import('@/lib/search-modes').SearchMode
   n_results?: number
   offset?: number
   project_tag?: string
@@ -348,6 +348,29 @@ export const api = {
   },
 
   // Search
+  async getSearchModes(): Promise<{ modes: string[] }> {
+    const { data } = await http.get('/search/modes')
+    return data
+  },
+
+  async searchDiagnose(q: string, n: number = 3): Promise<{
+    query: string
+    n: number
+    results: Record<string, Array<{
+      video_file_id: string
+      filename: string
+      thumbnail_path: string | null
+      duration_seconds: number | null
+      best_score: number
+      snippet: string | null
+      frame_timestamp: number | null
+      _error?: string
+    }>>
+  }> {
+    const { data } = await http.get('/tools/search-diagnose', { params: { q, n } })
+    return data
+  },
+
   async search(req: SearchRequest): Promise<SearchResponse> {
     const { data } = await http.post('/search', req)
     return data

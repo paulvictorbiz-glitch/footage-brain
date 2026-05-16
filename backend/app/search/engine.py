@@ -486,10 +486,24 @@ def _merge_results(streams: List[List[SearchResult]], n_results: int) -> List[Se
     return combined[:n_results]
 
 
+# Single source of truth for the supported search modes. The frontend asks
+# `GET /api/search/modes` at startup and warns if its local list (in
+# frontend/src/lib/search-modes.ts) doesn't match. Update both together when
+# adding or renaming a mode.
+SEARCH_MODES: tuple[str, ...] = (
+    "semantic",
+    "keyword",
+    "hybrid",
+    "visual",
+    "caption",
+    "multimodal",
+)
+
+
 def search(
     session: Session,
     query: str,
-    mode: str = "semantic",  # "semantic" | "keyword" | "hybrid" | "visual" | "caption" | "multimodal"
+    mode: str = "semantic",  # one of SEARCH_MODES
     filters: Optional[SearchFilters] = None,
     n_results: int = 30,
 ) -> List[SearchResult]:

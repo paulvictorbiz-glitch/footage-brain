@@ -355,3 +355,40 @@ def get_indexing_speed(session: Session = Depends(get_db_session)):
         "eta_seconds_total": eta_seconds_total or None,
         "active_stage": active_stage["stage"] if active_stage else None,
     }
+
+
+@router.get("/search-diagnose")
+def search_diagnose(
+    q: str = Query(..., min_length=1, description="search query"),
+    n: int = Query(3, ge=1, le=10, description="top results per mode"),
+    session: Session = Depends(get_db_session),
+):
+    """
+    Run one query through every supported search mode and return the top
+    results per mode. Used by the /diagnose page to compare modes
+    side-by-side — fastest way to verify that visual/caption/multimodal
+    actually retrieve sensible results on real footage.
+    """
+    from app.search.engine import SEARCH_MODES, SearchFilters, search
+
+    filters = SearchFilters()
+    out: dict[str, list[dict]] = {}
+    for mode in SEARCH_MODES:
+        try:
+            results = search(session, q, mode=mode, filters=filters, n_results=n)
+        except Exception as exc:
+            out[mode] = [{"_error": str(exc)[:200]}]
+            continue
+        out[mode] = [
+            {
+                "video_file_id": r.video_file_id,
+                "filename": r.filename,
+                "thumbnail_path": r.thumbnail_path,
+                "duration_seconds": r.duration_seconds,
+                "best_score": r.best_score,
+                "snippet": (r.matched_chunks[0].text[:140] if r.matched_chunks else None),
+                "frame_timestamp": (r.frame_matches[0].timestamp if r.frame_matches else None),
+            }
+            for r in results
+        ]
+    return {"query": q, "n": n, "results": out}
